@@ -1,0 +1,15 @@
+aws:
+  # region: us-west-2
+  s3BucketName: <FILL ME>
+  # s3BucketPrefix: ""
+  # flowRecordsRetentionDays: 3
+  snowflakeAccess:
+    storageIntegration:
+      # iamPolicyName: antrea-sf-storage
+      # iamRoleName: antrea-sf-storage
+      # storageIntegrationName: antrea_flows
+    notificationintegration:
+      # iamPolicyName: antrea-sf-notification
+      # iamRoleName: antrea-sf-notification
+      # notificationIntegrationName: antrea_notifications
+      snsTopicName: antrea-sf-snowpipe-error-notifications
