@@ -36,6 +36,11 @@ const (
 	storageIAMRoleName       = "antrea-sf-storage-iam-role"
 	storageIAMPolicyName     = "antrea-sf-storage-iam-policy"
 	storageIntegrationName   = "antonin_test_storage_integration"
+	databaseName             = "ANTONIN_TEST_ANTREA"
+	schemaName               = "THEIA"
+	flowRetentionDays        = 30
+	flowDeletionTaskName     = "DELETE_STALE_FLOWS"
+	udfStageName             = "UDFS"
 )
 
 func declareSnowflakeIngestion(bucketName string, accountID string) func(ctx *pulumi.Context) error {
@@ -152,6 +157,52 @@ func declareSnowflakeIngestion(bucketName string, accountID string) func(ctx *pu
 	return declareFunc
 }
 
+func declareSnowflakeDatabase() func(ctx *pulumi.Context) error {
+	declareFunc := func(ctx *pulumi.Context) error {
+		db, err := snowflake.NewDatabase(ctx, "antrea-sf-db", &snowflake.DatabaseArgs{
+			Name: pulumi.String(databaseName),
+		})
+		if err != nil {
+			return err
+		}
+
+		schema, err := snowflake.NewSchema(ctx, "antrea-sf-schema", &snowflake.SchemaArgs{
+			Database: db.Name,
+			Name:     pulumi.String(schemaName),
+		})
+		if err != nil {
+			return err
+		}
+
+		_, err = snowflake.NewStage(ctx, "antrea-sf-udf-stage", &snowflake.StageArgs{
+			Database: db.Name,
+			Schema:   schema.Name,
+			Name:     pulumi.String(udfStageName),
+		})
+		if err != nil {
+			return err
+		}
+
+		if flowRetentionDays > 0 {
+			_, err := snowflake.NewTask(ctx, "antrea-sf-flow-deletion-task", &snowflake.TaskArgs{
+				Database:                            db.Name,
+				Schema:                              schema.Name,
+				Name:                                pulumi.String(flowDeletionTaskName),
+				Schedule:                            pulumi.String("USING CRON 0 0 * * * UTC"),
+				SqlStatement:                        pulumi.Sprintf("DELETE FROM flows WHERE DATEDIFF(day, timeInserted, CURRENT_TIMESTAMP) > %d", flowRetentionDays),
+				UserTaskManagedInitialWarehouseSize: pulumi.String("XSMALL"),
+				Enabled:                             pulumi.Bool(true),
+			})
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+	return declareFunc
+}
+
 func declare(bucketName string) func(ctx *pulumi.Context) error {
 	declareFunc := func(ctx *pulumi.Context) error {
 		bucket, err := s3.NewBucket(
@@ -196,6 +247,10 @@ func declare(bucketName string) func(ctx *pulumi.Context) error {
 		}
 
 		if err := declareSnowflakeIngestion(bucketName, current.AccountId)(ctx); err != nil {
+			return err
+		}
+
+		if err := declareSnowflakeDatabase()(ctx); err != nil {
 			return err
 		}
 
