@@ -5,14 +5,12 @@ go 1.19
 require (
 	github.com/aws/aws-sdk-go-v2 v1.16.14
 	github.com/aws/aws-sdk-go-v2/config v1.17.5
-	github.com/aws/aws-sdk-go-v2/service/iam v1.18.17
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.27.9
-	github.com/aws/aws-sdk-go-v2/service/sns v1.17.17
-	github.com/aws/aws-sdk-go-v2/service/sts v1.16.17
 	github.com/dustinkirkland/golang-petname v0.0.0-20191129215211-8e5a1ed0cff0
 	github.com/go-logr/logr v1.2.3
 	github.com/go-logr/zapr v1.2.3
 	github.com/pulumi/pulumi-aws/sdk/v5 v5.13.0
+	github.com/pulumi/pulumi-snowflake/sdk v0.13.0
 	github.com/pulumi/pulumi/sdk/v3 v3.39.1
 	github.com/spf13/cobra v1.5.0
 	go.uber.org/zap v1.23.0
@@ -36,6 +34,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.13.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.11.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.13.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.16.17 // indirect
 	github.com/aws/smithy-go v1.13.2 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cheggaaa/pb v1.0.18 // indirect

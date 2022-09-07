@@ -12,7 +12,10 @@ import (
 	"runtime"
 
 	"github.com/go-logr/logr"
+	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws"
+	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/iam"
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/s3"
+	"github.com/pulumi/pulumi-snowflake/sdk/go/snowflake"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
@@ -30,7 +33,124 @@ const (
 
 	flowRecordsRetentionDays = 7
 	s3BucketPrefix           = "antrea-flows"
+	storageIAMRoleName       = "antrea-sf-storage-iam-role"
+	storageIAMPolicyName     = "antrea-sf-storage-iam-policy"
+	storageIntegrationName   = "antonin_test_storage_integration"
 )
+
+func declareSnowflakeIngestion(bucketName string, accountID string) func(ctx *pulumi.Context) error {
+	declareFunc := func(ctx *pulumi.Context) error {
+		storageIntegration, err := snowflake.NewStorageIntegration(ctx, "antrea-sf-storage-integration", &snowflake.StorageIntegrationArgs{
+			Name:                    pulumi.String(storageIntegrationName),
+			Type:                    pulumi.String("EXTERNAL_STAGE"),
+			Enabled:                 pulumi.Bool(true),
+			StorageAllowedLocations: pulumi.ToStringArray([]string{fmt.Sprintf("s3://%s/%s/", bucketName, s3BucketPrefix)}),
+			StorageProvider:         pulumi.String("S3"),
+			StorageAwsRoleArn:       pulumi.Sprintf("arn:aws:iam::%s:role/%s", accountID, pulumi.String(storageIAMRoleName)),
+		})
+		if err != nil {
+			return err
+		}
+
+		storagePolicyDocument, err := iam.GetPolicyDocument(ctx, &iam.GetPolicyDocumentArgs{
+			Statements: []iam.GetPolicyDocumentStatement{
+				iam.GetPolicyDocumentStatement{
+					Sid:    pulumi.StringRef("1"),
+					Effect: pulumi.StringRef("Allow"),
+					Actions: []string{
+						"s3:GetObject",
+						"s3:GetObjectVersion",
+					},
+					Resources: []string{
+						fmt.Sprintf("arn:aws:s3:::%s/%s/*", bucketName, s3BucketPrefix),
+					},
+				},
+				iam.GetPolicyDocumentStatement{
+					Sid:    pulumi.StringRef("2"),
+					Effect: pulumi.StringRef("Allow"),
+					Actions: []string{
+						"s3:ListBucket",
+					},
+					Resources: []string{
+						fmt.Sprintf("arn:aws:s3:::%s", bucketName),
+					},
+					Conditions: []iam.GetPolicyDocumentStatementCondition{
+						iam.GetPolicyDocumentStatementCondition{
+							Test:     "StringLike",
+							Variable: "s3:prefix",
+							Values:   []string{fmt.Sprintf("%s/*", s3BucketPrefix)},
+						},
+					},
+				},
+				iam.GetPolicyDocumentStatement{
+					Sid:    pulumi.StringRef("3"),
+					Effect: pulumi.StringRef("Allow"),
+					Actions: []string{
+						"s3:GetBucketLocation",
+					},
+					Resources: []string{
+						fmt.Sprintf("arn:aws:s3:::%s", bucketName),
+					},
+				},
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		// For some reason pulumi reports a diff om every refresh, when in fact the resource
+		// does not need to be updated and is not actually updated during the "up" stage.
+		// See https://github.com/pulumi/pulumi-aws/issues/2024
+		storageIAMPolicy, err := iam.NewPolicy(ctx, "antrea-sf-storage-iam-policy", &iam.PolicyArgs{
+			Name:   pulumi.String(storageIAMPolicyName),
+			Policy: pulumi.String(storagePolicyDocument.Json),
+		})
+		if err != nil {
+			return err
+		}
+
+		storageAssumeRolePolicyDocument := iam.GetPolicyDocumentOutput(ctx, iam.GetPolicyDocumentOutputArgs{
+			Statements: iam.GetPolicyDocumentStatementArray{
+				iam.GetPolicyDocumentStatementArgs{
+					Sid:     pulumi.String("1"),
+					Actions: pulumi.ToStringArray([]string{"sts:AssumeRole"}),
+					Principals: iam.GetPolicyDocumentStatementPrincipalArray{
+						iam.GetPolicyDocumentStatementPrincipalArgs{
+							Type:        pulumi.String("AWS"),
+							Identifiers: pulumi.ToStringArray([]string{accountID}),
+						},
+					},
+					Conditions: iam.GetPolicyDocumentStatementConditionArray{
+						iam.GetPolicyDocumentStatementConditionArgs{
+							Test:     pulumi.String("StringEquals"),
+							Variable: pulumi.String("sts:ExternalId"),
+							Values:   pulumi.StringArray([]pulumi.StringInput{storageIntegration.StorageAwsExternalId}),
+						},
+					},
+				},
+			},
+		})
+
+		storageIAMRole, err := iam.NewRole(ctx, "antrea-sf-storage-iam-policy", &iam.RoleArgs{
+			Name:             pulumi.String(storageIAMRoleName),
+			AssumeRolePolicy: storageAssumeRolePolicyDocument.Json(),
+		})
+		if err != nil {
+			return err
+		}
+
+		_, err = iam.NewRolePolicyAttachment(ctx, "antrea-sf-storage-iam-role-policy-attachment", &iam.RolePolicyAttachmentArgs{
+			Role:      storageIAMRole.Name,
+			PolicyArn: storageIAMPolicy.Arn,
+		})
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+	return declareFunc
+}
 
 func declare(bucketName string) func(ctx *pulumi.Context) error {
 	declareFunc := func(ctx *pulumi.Context) error {
@@ -67,6 +187,15 @@ func declare(bucketName string) func(ctx *pulumi.Context) error {
 			},
 		})
 		if err != nil {
+			return err
+		}
+
+		current, err := aws.GetCallerIdentity(ctx, nil, nil)
+		if err != nil {
+			return err
+		}
+
+		if err := declareSnowflakeIngestion(bucketName, current.AccountId)(ctx); err != nil {
 			return err
 		}
 
