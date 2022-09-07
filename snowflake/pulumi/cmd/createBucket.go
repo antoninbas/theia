@@ -37,7 +37,7 @@ to quickly create a Cobra application.`,
 			suffix := petname.Generate(4, "-")
 			bucketName = fmt.Sprintf("%s-%s", bucketPrefix, suffix)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
 		if err != nil {
@@ -83,4 +83,5 @@ func init() {
 	createBucketCmd.Flags().String("region", defaultRegion, "Region where bucket should be created")
 	createBucketCmd.Flags().String("name", "", "Name of bucket to create")
 	createBucketCmd.Flags().String("prefix", "antrea", "Prefix to use for bucket name (with auto-generated suffix)")
+	createBucketCmd.MarkFlagsMutuallyExclusive("name", "prefix")
 }

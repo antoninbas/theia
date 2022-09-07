@@ -25,10 +25,11 @@ to quickly create a Cobra application.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		region, _ := cmd.Flags().GetString("region")
 		bucketName, _ := cmd.Flags().GetString("bucket-name")
+		snsTopicARN, _ := cmd.Flags().GetString("sns-topic-arn")
 		workdir, _ := cmd.Flags().GetString("workdir")
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
-		mgr := stack.NewManager(logger, bucketName, region, workdir)
+		mgr := stack.NewManager(logger, bucketName, snsTopicARN, region, workdir)
 		return mgr.Onboard(ctx)
 	},
 }
@@ -39,5 +40,6 @@ func init() {
 	onboardCmd.Flags().String("region", defaultRegion, "Region where bucket should be created")
 	onboardCmd.Flags().String("bucket-name", "", "Bucket to store infra state and Antrea flows")
 	onboardCmd.MarkFlagRequired("bucket-name")
+	onboardCmd.Flags().String("sns-topic-arn", "", "ARN of the SNS Topic where Snowflake ingestion error notifications will be sent")
 	onboardCmd.Flags().String("workdir", "", "Use provided local workdir (by default a temporary one will be created")
 }
