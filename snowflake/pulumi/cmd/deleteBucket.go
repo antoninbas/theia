@@ -1,0 +1,112 @@
+/*
+Copyright © 2022 NAME HERE <EMAIL ADDRESS>
+*/
+package cmd
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/spf13/cobra"
+
+	s3client "antrea.io/theia/snowflake/pulumi/pkg/aws/client/s3"
+)
+
+// deleteBucketCmd represents the deleteBucket command
+var deleteBucketCmd = &cobra.Command{
+	Use:   "delete-bucket",
+	Short: "A brief description of your command",
+	Long: `A longer description that spans multiple lines and likely contains examples
+and usage of using your command. For example:
+
+Cobra is a CLI library for Go that empowers applications.
+This application is a tool to generate the needed files
+to quickly create a Cobra application.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		region, _ := cmd.Flags().GetString("region")
+		bucketName, _ := cmd.Flags().GetString("name")
+		force, _ := cmd.Flags().GetBool("force")
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+		if err != nil {
+			return fmt.Errorf("unable to load AWS SDK config: %w", err)
+
+		}
+		s3Client := s3client.GetClient(awsCfg)
+		if force {
+			if err := deleteS3Objects(ctx, s3Client, bucketName); err != nil {
+				return err
+			}
+		}
+		return deleteBucket(ctx, s3Client, bucketName)
+	},
+}
+
+func deleteBucket(ctx context.Context, s3Client s3client.Interface, name string) error {
+	logger := logger.WithValues("bucket", name)
+	logger.Info("Deleting S3 bucket")
+	if _, err := s3Client.DeleteBucket(ctx, &s3.DeleteBucketInput{
+		Bucket: &name,
+	}); err != nil {
+		return fmt.Errorf("error when deleting bucket '%s': %w", name, err)
+	}
+	logger.Info("Deleted S3 bucket")
+	return nil
+}
+
+func deleteS3Objects(ctx context.Context, s3Client s3client.Interface, bucketName string) error {
+	logger := logger.WithValues("bucket", bucketName)
+	prefix := ""
+	var nextToken *string
+	logger.Info("Deleting all objects in S3 bucket")
+	for {
+		output, err := s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            &bucketName,
+			ContinuationToken: nextToken,
+			Prefix:            &prefix,
+		})
+		if err != nil {
+			return fmt.Errorf("error when listing objects: %w", err)
+		}
+		keys := make([]s3types.ObjectIdentifier, 0, len(output.Contents))
+		for _, obj := range output.Contents {
+			keys = append(keys, s3types.ObjectIdentifier{
+				Key: obj.Key,
+			})
+		}
+		if len(keys) == 0 {
+			break
+		}
+		logger.Info("Deleting objects", "count", len(keys))
+		_, err = s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: &bucketName,
+			Delete: &s3types.Delete{
+				Objects: keys,
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("error when deleting objects: %w", err)
+		}
+
+		nextToken = output.ContinuationToken
+		if nextToken == nil {
+			break
+		}
+	}
+	logger.Info("Deleted all objects in S3 bucket")
+	return nil
+}
+
+func init() {
+	rootCmd.AddCommand(deleteBucketCmd)
+
+	deleteBucketCmd.Flags().String("region", defaultRegion, "Region to use for deleting the bucket")
+	deleteBucketCmd.Flags().String("name", "", "Name of bucket to delete")
+	deleteBucketCmd.MarkFlagRequired("name")
+	deleteBucketCmd.Flags().Bool("force", false, "Delete all objects if bucket is not empty")
+}
