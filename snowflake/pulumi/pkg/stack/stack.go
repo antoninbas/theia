@@ -45,6 +45,10 @@ const (
 	flowDeletionTaskName        = "DELETE_STALE_FLOWS"
 	udfStageName                = "UDFS"
 	ingestionStageName          = "FLOWSTAGE"
+	autoIngestPipeName          = "FLOWPIPE"
+
+	// do not change!!!
+	flowsTableName = "FLOWS"
 )
 
 func declareSnowflakeIngestion(bucketName string, accountID string) func(ctx *pulumi.Context) (*snowflake.StorageIntegration, *iam.Role, error) {
@@ -287,6 +291,7 @@ func declareSnowflakeDatabase(
 			dependencies = append(dependencies, notificationIntegration, notificationIAMRole)
 		}
 
+		// ingestionStage, err := snowflake.NewStage(ctx, "antrea-sf-ingestion-stage", &snowflake.StageArgs{
 		_, err = snowflake.NewStage(ctx, "antrea-sf-ingestion-stage", &snowflake.StageArgs{
 			Database:           db.Name,
 			Schema:             schema.Name,
@@ -297,6 +302,23 @@ func declareSnowflakeDatabase(
 		if err != nil {
 			return err
 		}
+
+		// pipeArgs := &snowflake.PipeArgs{
+		// 	Database:      db.Name,
+		// 	Schema:        schema.Name,
+		// 	Name:          pulumi.String(autoIngestPipeName),
+		// 	AutoIngest:    pulumi.Bool(true),
+		// 	CopyStatement: pulumi.Sprintf("COPY INTO %s FROM @%s FILE_FORMAT = (TYPE = 'CSV')", flowsTableName, ingestionStage.Name),
+		// }
+		// if notificationIntegration != nil {
+		// 	pipeArgs.ErrorIntegration = notificationIntegration.Name
+		// }
+
+		// // a bit of defensive programming: explicit dependency on ingestionStage may not be strictly required
+		// _, err = snowflake.NewPipe(ctx, "antrea-sf-auto-ingest-pipe", pipeArgs, pulumi.DependsOn([]pulumi.Resource{ingestionStage}))
+		// if err != nil {
+		// 	return err
+		// }
 
 		if flowRetentionDays > 0 {
 			_, err := snowflake.NewTask(ctx, "antrea-sf-flow-deletion-task", &snowflake.TaskArgs{
