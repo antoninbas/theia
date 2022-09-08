@@ -305,21 +305,6 @@ func declareSnowflakeDatabase(
 			return err
 		}
 
-		if flowRetentionDays > 0 {
-			_, err := snowflake.NewTask(ctx, "antrea-sf-flow-deletion-task", &snowflake.TaskArgs{
-				Database:                            db.Name,
-				Schema:                              schema.Name,
-				Name:                                pulumi.String(flowDeletionTaskName),
-				Schedule:                            pulumi.String("USING CRON 0 0 * * * UTC"),
-				SqlStatement:                        pulumi.Sprintf("DELETE FROM flows WHERE DATEDIFF(day, timeInserted, CURRENT_TIMESTAMP) > %d", flowRetentionDays),
-				UserTaskManagedInitialWarehouseSize: pulumi.String("XSMALL"),
-				Enabled:                             pulumi.Bool(true),
-			})
-			if err != nil {
-				return err
-			}
-		}
-
 		return nil
 	}
 	return declareFunc
@@ -415,6 +400,21 @@ func declareDBObjectsStack(databaseName string, ingestionStageName string, notif
 		_, err := snowflake.NewPipe(ctx, "antrea-sf-auto-ingest-pipe", pipeArgs)
 		if err != nil {
 			return err
+		}
+
+		if flowRetentionDays > 0 {
+			_, err := snowflake.NewTask(ctx, "antrea-sf-flow-deletion-task", &snowflake.TaskArgs{
+				Database:                            pulumi.String(databaseName),
+				Schema:                              pulumi.String(schemaName),
+				Name:                                pulumi.String(flowDeletionTaskName),
+				Schedule:                            pulumi.String("USING CRON 0 0 * * * UTC"),
+				SqlStatement:                        pulumi.Sprintf("DELETE FROM %s WHERE DATEDIFF(day, timeInserted, CURRENT_TIMESTAMP) > %d", flowsTableName, flowRetentionDays),
+				UserTaskManagedInitialWarehouseSize: pulumi.String("XSMALL"),
+				Enabled:                             pulumi.Bool(true),
+			})
+			if err != nil {
+				return err
+			}
 		}
 
 		return nil
