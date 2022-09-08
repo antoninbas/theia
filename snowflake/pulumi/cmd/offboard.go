@@ -26,10 +26,18 @@ to quickly create a Cobra application.`,
 		region, _ := cmd.Flags().GetString("region")
 		stackName, _ := cmd.Flags().GetString("stack-name")
 		bucketName, _ := cmd.Flags().GetString("bucket-name")
+		bucketRegion, _ := cmd.Flags().GetString("bucket-region")
 		workdir, _ := cmd.Flags().GetString("workdir")
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
-		mgr := stack.NewManager(logger, stackName, bucketName, region, "", workdir)
+		if bucketRegion == "" {
+			var err error
+			bucketRegion, err = GetBucketRegion(ctx, bucketName, region)
+			if err != nil {
+				return err
+			}
+		}
+		mgr := stack.NewManager(logger, stackName, bucketName, bucketRegion, region, "", workdir)
 		return mgr.Offboard(ctx)
 	},
 }
@@ -41,5 +49,6 @@ func init() {
 	offboardCmd.Flags().String("stack-name", "default", "Name of the infrastructure stack: useful to deploy multiple instances in the same Snowflake account or with the same bucket (e.g., one for dev and one for prod)")
 	offboardCmd.Flags().String("bucket-name", "", "Bucket to store infra state and Antrea flows")
 	offboardCmd.MarkFlagRequired("bucket-name")
+	offboardCmd.Flags().String("bucket-region", "", "Region where infra bucket is defined; if omitted, we will try to get the region from AWS")
 	offboardCmd.Flags().String("workdir", "", "Use provided local workdir (by default a temporary one will be created")
 }

@@ -50,7 +50,7 @@ const (
 	storageIAMPolicyNamePrefix   = "antrea-sf-storage-iam-policy-"
 	storageIntegrationNamePrefix = "ANTREA_FLOWS_STORAGE_INTEGRATION_"
 
-	notificationIAMRoleNamePrefix     = "antrea-sf-notification-iam-role"
+	notificationIAMRoleNamePrefix     = "antrea-sf-notification-iam-role-"
 	notificationIAMPolicyNamePrefix   = "antrea-sf-notification-iam-policy"
 	notificationIntegrationNamePrefix = "ANTREA_FLOWS_NOTIFICATION_INTEGRATION_"
 
@@ -512,29 +512,32 @@ func installPulumiCLI(ctx context.Context, logger logr.Logger, dir string) error
 }
 
 type Manager struct {
-	logger          logr.Logger
-	stackName       string
-	infraBucketName string
-	region          string
-	warehouseName   string
-	workdir         string
+	logger            logr.Logger
+	stackName         string
+	infraBucketName   string
+	infraBucketRegion string
+	region            string
+	warehouseName     string
+	workdir           string
 }
 
 func NewManager(
 	logger logr.Logger,
 	stackName string,
 	infraBucketName string,
+	infraBucketRegion string,
 	region string,
 	warehouseName string,
 	workdir string,
 ) *Manager {
 	return &Manager{
-		logger:          logger.WithValues("stack", stackName),
-		stackName:       stackName,
-		infraBucketName: infraBucketName,
-		region:          region,
-		warehouseName:   warehouseName,
-		workdir:         workdir,
+		logger:            logger.WithValues("stack", stackName),
+		stackName:         stackName,
+		infraBucketName:   infraBucketName,
+		infraBucketRegion: infraBucketRegion,
+		region:            region,
+		warehouseName:     warehouseName,
+		workdir:           workdir,
 	}
 }
 
@@ -559,7 +562,7 @@ func (m *Manager) setup(
 			Runtime: workspace.NewProjectRuntimeInfo("go", nil),
 			Main:    workdir,
 			Backend: &workspace.ProjectBackend{
-				URL: fmt.Sprintf("s3://%s/%s?region=%s", m.infraBucketName, "antrea-flows-infra", m.region),
+				URL: fmt.Sprintf("s3://%s/%s?region=%s", m.infraBucketName, "antrea-flows-infra", m.infraBucketRegion),
 			},
 		}),
 		auto.EnvVars(map[string]string{

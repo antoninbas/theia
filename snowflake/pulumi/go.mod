@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/aws/aws-sdk-go-v2 v1.16.14
 	github.com/aws/aws-sdk-go-v2/config v1.17.5
+	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.5.4
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.27.9
 	github.com/aws/aws-sdk-go-v2/service/sns v1.17.17
 	github.com/dustinkirkland/golang-petname v0.0.0-20191129215211-8e5a1ed0cff0
@@ -31,7 +32,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.7 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.12.18 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.15 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.5.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.15 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.3.22 // indirect
