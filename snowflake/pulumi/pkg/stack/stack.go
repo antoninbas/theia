@@ -329,6 +329,7 @@ func declareDBStack() func(ctx *pulumi.Context) error {
 		if err != nil {
 			return err
 		}
+		ctx.Export("bucketID", bucket.ID())
 
 		_, err = s3.NewBucketLifecycleConfigurationV2(ctx, "antrea-flows-bucket-lifecycle-configuration", &s3.BucketLifecycleConfigurationV2Args{
 			Bucket: bucket.ID(),
@@ -429,7 +430,7 @@ func declareDBStack() func(ctx *pulumi.Context) error {
 	return declareFunc
 }
 
-func declareDBObjectsStack(databaseName string, ingestionStageName string, notificationIntegrationName string) func(ctx *pulumi.Context) error {
+func declareDBObjectsStack(bucketID string, databaseName string, ingestionStageName string, notificationIntegrationName string) func(ctx *pulumi.Context) error {
 	declareFunc := func(ctx *pulumi.Context) error {
 		pipeArgs := &snowflake.PipeArgs{
 			Database:         pulumi.String(databaseName),
@@ -442,7 +443,24 @@ func declareDBObjectsStack(databaseName string, ingestionStageName string, notif
 		}
 
 		// a bit of defensive programming: explicit dependency on ingestionStage may not be strictly required
-		_, err := snowflake.NewPipe(ctx, "antrea-sf-auto-ingest-pipe", pipeArgs)
+		pipe, err := snowflake.NewPipe(ctx, "antrea-sf-auto-ingest-pipe", pipeArgs)
+		if err != nil {
+			return err
+		}
+
+		_, err = s3.NewBucketNotification(ctx, "antrea-flows-bucket-notification", &s3.BucketNotificationArgs{
+			Bucket: pulumi.String(bucketID),
+			Queues: s3.BucketNotificationQueueArray{
+				&s3.BucketNotificationQueueArgs{
+					QueueArn: pipe.NotificationChannel,
+					Events: pulumi.StringArray{
+						pulumi.String("s3:ObjectCreated:*"),
+					},
+					FilterPrefix: pulumi.Sprintf("%s/", s3BucketFlowsFolder),
+					Id:           pulumi.String("Auto-ingest Snowflake"),
+				},
+			},
+		})
 		if err != nil {
 			return err
 		}
@@ -746,29 +764,38 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 		return nil
 	}
 
-	getFirstStackOutputs := func() (string, string, error) {
+	getFirstStackOutputs := func() (bucketID, databaseName, notificationIntegrationName string, err error) {
 		outs, err := dbStack.Outputs(ctx)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to get outputs from first stack: %w", err)
+			err = fmt.Errorf("failed to get outputs from first stack: %w", err)
+			return
 		}
-		databaseName, ok := outs["databaseName"].Value.(string)
+		var ok bool
+		bucketID, ok = outs["bucketID"].Value.(string)
 		if !ok {
-			return "", "", fmt.Errorf("failed to get databaseName from first stack outputs: %w", err)
+			err = fmt.Errorf("failed to get bucketID from first stack outputs")
+			return
 		}
-		notificationIntegrationName, ok := outs["notificationIntegrationName"].Value.(string)
+		databaseName, ok = outs["databaseName"].Value.(string)
 		if !ok {
-			return "", "", fmt.Errorf("failed to get notificationIntegrationName from first stack outputs: %w", err)
+			err = fmt.Errorf("failed to get databaseName from first stack outputs")
+			return
 		}
-		return databaseName, notificationIntegrationName, nil
+		notificationIntegrationName, ok = outs["notificationIntegrationName"].Value.(string)
+		if !ok {
+			err = fmt.Errorf("failed to get notificationIntegrationName from first stack outputs")
+			return
+		}
+		return
 	}
 
 	if destroy {
 		// destroy stacks in reverse order
-		databaseName, notificationIntegrationName, err := getFirstStackOutputs()
+		bucketID, databaseName, notificationIntegrationName, err := getFirstStackOutputs()
 		if err != nil {
 			return err
 		}
-		dbObjectsStack, err := m.setup(ctx, dbObjectsProjectName, m.stackName, workdir, dbObjectsStackPlugins, declareDBObjectsStack(databaseName, ingestionStageName, notificationIntegrationName))
+		dbObjectsStack, err := m.setup(ctx, dbObjectsProjectName, m.stackName, workdir, dbObjectsStackPlugins, declareDBObjectsStack(bucketID, databaseName, ingestionStageName, notificationIntegrationName))
 		if err != nil {
 			return err
 		}
@@ -799,14 +826,14 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 	if err := updateFunc(dbProjectName, &dbStack); err != nil {
 		return err
 	}
-	databaseName, notificationIntegrationName, err := getFirstStackOutputs()
+	bucketID, databaseName, notificationIntegrationName, err := getFirstStackOutputs()
 	if err != nil {
 		return err
 	}
 	if err := m.runSnowflakeMigrations(ctx, databaseName); err != nil {
 		return err
 	}
-	dbObjectsStack, err := m.setup(ctx, dbObjectsProjectName, m.stackName, workdir, dbObjectsStackPlugins, declareDBObjectsStack(databaseName, ingestionStageName, notificationIntegrationName))
+	dbObjectsStack, err := m.setup(ctx, dbObjectsProjectName, m.stackName, workdir, dbObjectsStackPlugins, declareDBObjectsStack(bucketID, databaseName, ingestionStageName, notificationIntegrationName))
 	if err := updateFunc(dbObjectsProjectName, &dbObjectsStack); err != nil {
 		return err
 	}
