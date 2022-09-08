@@ -4,28 +4,36 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
+	"github.com/dustinkirkland/golang-petname"
 	"github.com/go-logr/logr"
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws"
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/iam"
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/s3"
 	"github.com/pulumi/pulumi-snowflake/sdk/go/snowflake"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
+	"github.com/pulumi/pulumi/sdk/v3/go/auto/optdestroy"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"antrea.io/theia/snowflake/pulumi/database"
+	sf "antrea.io/theia/snowflake/pulumi/pkg/snowflake"
 )
 
 const (
-	projectName = "antrea"
-	stackName   = "theia-infra"
+	projectName        = "antrea"
+	dbStackName        = "theia-infra-db"
+	dbObjectsStackName = "theia-infra-db-objects"
 
 	pulumiVersion                = "v3.39.1"
 	pulumiAWSPluginVersion       = "v5.13.0"
@@ -291,7 +299,6 @@ func declareSnowflakeDatabase(
 			dependencies = append(dependencies, notificationIntegration, notificationIAMRole)
 		}
 
-		// ingestionStage, err := snowflake.NewStage(ctx, "antrea-sf-ingestion-stage", &snowflake.StageArgs{
 		_, err = snowflake.NewStage(ctx, "antrea-sf-ingestion-stage", &snowflake.StageArgs{
 			Database:           db.Name,
 			Schema:             schema.Name,
@@ -302,23 +309,6 @@ func declareSnowflakeDatabase(
 		if err != nil {
 			return err
 		}
-
-		// pipeArgs := &snowflake.PipeArgs{
-		// 	Database:      db.Name,
-		// 	Schema:        schema.Name,
-		// 	Name:          pulumi.String(autoIngestPipeName),
-		// 	AutoIngest:    pulumi.Bool(true),
-		// 	CopyStatement: pulumi.Sprintf("COPY INTO %s FROM @%s FILE_FORMAT = (TYPE = 'CSV')", flowsTableName, ingestionStage.Name),
-		// }
-		// if notificationIntegration != nil {
-		// 	pipeArgs.ErrorIntegration = notificationIntegration.Name
-		// }
-
-		// // a bit of defensive programming: explicit dependency on ingestionStage may not be strictly required
-		// _, err = snowflake.NewPipe(ctx, "antrea-sf-auto-ingest-pipe", pipeArgs, pulumi.DependsOn([]pulumi.Resource{ingestionStage}))
-		// if err != nil {
-		// 	return err
-		// }
 
 		if flowRetentionDays > 0 {
 			_, err := snowflake.NewTask(ctx, "antrea-sf-flow-deletion-task", &snowflake.TaskArgs{
@@ -340,7 +330,7 @@ func declareSnowflakeDatabase(
 	return declareFunc
 }
 
-func declare(bucketName string, snsTopicARN string) func(ctx *pulumi.Context) error {
+func declareDBStack(bucketName string, snsTopicARN string) func(ctx *pulumi.Context) error {
 	declareFunc := func(ctx *pulumi.Context) error {
 		bucket, err := s3.NewBucket(
 			ctx,
@@ -394,6 +384,31 @@ func declare(bucketName string, snsTopicARN string) func(ctx *pulumi.Context) er
 		}
 
 		if err := declareSnowflakeDatabase(bucketName, storageIntegration, storageIAMRole, notificationIntegration, notificationIAMRole)(ctx); err != nil {
+			return err
+		}
+
+		return nil
+	}
+	return declareFunc
+}
+
+func declareDBObjectsStack(withErrorNotifications bool) func(ctx *pulumi.Context) error {
+	declareFunc := func(ctx *pulumi.Context) error {
+		pipeArgs := &snowflake.PipeArgs{
+			Database:   pulumi.String(databaseName),
+			Schema:     pulumi.String(schemaName),
+			Name:       pulumi.String(autoIngestPipeName),
+			AutoIngest: pulumi.Bool(true),
+			// FQN required for table and stage, see https://github.com/pulumi/pulumi-snowflake/issues/129
+			CopyStatement: pulumi.Sprintf("COPY INTO %s.%s.%s FROM @%s.%s.%s FILE_FORMAT = (TYPE = 'CSV')", databaseName, schemaName, flowsTableName, databaseName, schemaName, ingestionStageName),
+		}
+		if withErrorNotifications {
+			pipeArgs.ErrorIntegration = pulumi.String(notificationIntegrationName)
+		}
+
+		// a bit of defensive programming: explicit dependency on ingestionStage may not be strictly required
+		_, err := snowflake.NewPipe(ctx, "antrea-sf-auto-ingest-pipe", pipeArgs)
+		if err != nil {
 			return err
 		}
 
@@ -492,26 +507,37 @@ func installPulumiCLI(ctx context.Context, logger logr.Logger, dir string) error
 }
 
 type Manager struct {
-	logger      logr.Logger
-	bucketName  string
-	snsTopicARN string
-	region      string
-	workdir     string
+	logger        logr.Logger
+	stackName     string
+	bucketName    string
+	snsTopicARN   string
+	region        string
+	warehouseName string
+	workdir       string
 }
 
-func NewManager(logger logr.Logger, bucketName string, snsTopicARN string, region string, workdir string) *Manager {
+func NewManager(
+	logger logr.Logger,
+	stackName string,
+	bucketName string,
+	snsTopicARN string,
+	region string,
+	warehouseName string,
+	workdir string,
+) *Manager {
 	return &Manager{
-		logger:      logger,
-		bucketName:  bucketName,
-		snsTopicARN: snsTopicARN,
-		region:      region,
-		workdir:     workdir,
+		logger:        logger,
+		stackName:     stackName,
+		bucketName:    bucketName,
+		snsTopicARN:   snsTopicARN,
+		region:        region,
+		warehouseName: warehouseName,
+		workdir:       workdir,
 	}
 }
 
-func (m *Manager) setup(ctx context.Context, workdir string) (auto.Stack, error) {
-	logger := m.logger
-	declareFunc := declare(m.bucketName, m.snsTopicARN)
+func (m *Manager) setup(ctx context.Context, stackName string, workdir string, declareFunc func(ctx *pulumi.Context) error) (auto.Stack, error) {
+	logger := m.logger.WithValues("stack", stackName)
 	logger.Info("Creating stack")
 	s, err := auto.UpsertStackInlineSource(
 		ctx,
@@ -552,7 +578,63 @@ func (m *Manager) setup(ctx context.Context, workdir string) (auto.Stack, error)
 	logger.Info("Installed Snowflake plugin")
 	// set stack configuration specifying the AWS region to deploy
 	s.SetConfig(ctx, "aws:region", auto.ConfigValue{Value: m.region})
+	logger.Info("Refreshing stack")
+	_, err = s.Refresh(ctx)
+	if err != nil {
+		return s, err
+	}
+	logger.Info("Refreshed stack")
 	return s, nil
+}
+
+func (m *Manager) runSnowflakeMigrations(ctx context.Context) error {
+	logger := m.logger
+
+	dsn, sfCfg, err := sf.GetDSN(sf.SetDatabase(databaseName), sf.SetSchema(schemaName))
+	if err != nil {
+		return fmt.Errorf("failed to create DSN from Config: %v, err: %w", sfCfg, err)
+	}
+
+	db, err := sql.Open("snowflake", dsn)
+	if err != nil {
+		return fmt.Errorf("failed to connect to %v: %w", dsn, err)
+	}
+	defer db.Close()
+
+	sfClient := sf.NewClient(db, logger)
+
+	warehouseName := m.warehouseName
+	if warehouseName == "" {
+		warehouseName = strings.ToUpper(petname.Generate(3, "_"))
+		warehouseSize := sf.WarehouseSizeType("XSMALL")
+		autoSuspend := int32(60) // minimum value
+		logger.Info("Creating Snowflake warehouse", "name", warehouseName, "size", warehouseSize)
+		if err := sfClient.CreateWarehouse(ctx, warehouseName, sf.WarehouseConfig{
+			Size:        &warehouseSize,
+			AutoSuspend: &autoSuspend,
+		}); err != nil {
+			return fmt.Errorf("error when creating Snowflake warehouse: %w", err)
+		}
+		defer func() {
+			logger.Info("Deleting Snowflake warehouse", "name", warehouseName)
+			if err := sfClient.DropWarehouse(ctx, warehouseName); err != nil {
+				logger.Error(err, "Failed to delete temporary warehouse, please do it manually", "name", warehouseName)
+			}
+		}()
+	}
+
+	logger.Info("Using Snowflake warehouse", "name", warehouseName)
+	if err := sfClient.UseWarehouse(ctx, warehouseName); err != nil {
+		return err
+	}
+
+	logger.Info("Migrating Snowflake database", "name", databaseName)
+	dbm := NewDBMigrator(db, logger)
+	if err := dbm.DBMigrate(ctx, database.Migrations, database.MigrationsPath); err != nil {
+		return err
+	}
+	logger.Info("Migrated Snowflake database", "name", databaseName)
+	return nil
 }
 
 func (m *Manager) run(ctx context.Context, destroy bool) error {
@@ -579,25 +661,69 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 	}
 	os.Setenv("PATH", filepath.Join(workdir, "pulumi"))
 	logger.Info("Installed Pulumi")
-	s, err := m.setup(ctx, workdir)
+
+	dbStack, err := m.setup(ctx, dbStackName, workdir, declareDBStack(m.bucketName, m.snsTopicARN))
 	if err != nil {
 		return err
 	}
-	logger.Info("Refreshing stack")
-	_, err = s.Refresh(ctx)
+	dbObjectsStack, err := m.setup(ctx, dbObjectsStackName, workdir, declareDBObjectsStack(m.snsTopicARN != ""))
 	if err != nil {
 		return err
 	}
-	logger.Info("Refreshed stack")
-	logger.Info("Updating stack")
-	// wire up our update to stream progress to stdout
-	stdoutStreamer := optup.ProgressStreams(os.Stdout)
-	// res, err := s.Up(ctx, stdoutStreamer)
-	_, err = s.Up(ctx, stdoutStreamer)
-	if err != nil {
+
+	destroyFunc := func(stackName string, s *auto.Stack) error {
+		logger := logger.WithValues("stack", stackName)
+		logger.Info("Destroying stack")
+		// wire up our destroy to stream progress to stdout
+		stdoutStreamer := optdestroy.ProgressStreams(os.Stdout)
+		if _, err := s.Destroy(ctx, stdoutStreamer); err != nil {
+			return err
+		}
+		logger.Info("Destroyed stack")
+		logger.Info("Removing stack")
+		if err := s.Workspace().RemoveStack(ctx, s.Name()); err != nil {
+			return err
+		}
+		logger.Info("Removed stack")
+		return nil
+	}
+
+	if destroy {
+		// destroy stacks in reverse order
+		if err := destroyFunc(dbObjectsStackName, &dbObjectsStack); err != nil {
+			return err
+		}
+		if err := destroyFunc(dbStackName, &dbStack); err != nil {
+			return err
+		}
+		// return early
+		return nil
+	}
+
+	updateFunc := func(stackName string, s *auto.Stack) error {
+		logger := logger.WithValues("stack", stackName)
+		logger.Info("Updating stack")
+		// wire up our update to stream progress to stdout
+		stdoutStreamer := optup.ProgressStreams(os.Stdout)
+		// res, err := s.Up(ctx, stdoutStreamer)
+		_, err = s.Up(ctx, stdoutStreamer)
+		if err != nil {
+			return err
+		}
+		logger.Info("Updated stack")
+		return nil
+	}
+
+	if err := updateFunc(dbStackName, &dbStack); err != nil {
 		return err
 	}
-	logger.Info("Updated stack")
+	if err := m.runSnowflakeMigrations(ctx); err != nil {
+		return err
+	}
+	if err := updateFunc(dbObjectsStackName, &dbObjectsStack); err != nil {
+		return err
+	}
+
 	return nil
 }
 
