@@ -31,9 +31,8 @@ import (
 )
 
 const (
-	projectName        = "antrea"
-	dbStackName        = "theia-infra-db"
-	dbObjectsStackName = "theia-infra-db-objects"
+	dbProjectName        = "theia-infra-db"
+	dbObjectsProjectName = "theia-infra-db-objects"
 
 	pulumiVersion                = "v3.39.1"
 	pulumiAWSPluginVersion       = "v5.13.0"
@@ -526,7 +525,7 @@ func NewManager(
 	workdir string,
 ) *Manager {
 	return &Manager{
-		logger:        logger,
+		logger:        logger.WithValues("stack", stackName),
 		stackName:     stackName,
 		bucketName:    bucketName,
 		snsTopicARN:   snsTopicARN,
@@ -536,12 +535,12 @@ func NewManager(
 	}
 }
 
-func (m *Manager) setup(ctx context.Context, stackName string, workdir string, declareFunc func(ctx *pulumi.Context) error) (auto.Stack, error) {
-	logger := m.logger.WithValues("stack", stackName)
+func (m *Manager) setup(ctx context.Context, projectName string, stackName string, workdir string, declareFunc func(ctx *pulumi.Context) error) (auto.Stack, error) {
+	logger := m.logger.WithValues("project", projectName)
 	logger.Info("Creating stack")
 	s, err := auto.UpsertStackInlineSource(
 		ctx,
-		stackName,
+		fmt.Sprintf("%s.%s", projectName, stackName),
 		projectName,
 		declareFunc,
 		auto.WorkDir(workdir),
@@ -662,17 +661,17 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 	os.Setenv("PATH", filepath.Join(workdir, "pulumi"))
 	logger.Info("Installed Pulumi")
 
-	dbStack, err := m.setup(ctx, dbStackName, workdir, declareDBStack(m.bucketName, m.snsTopicARN))
+	dbStack, err := m.setup(ctx, dbProjectName, m.stackName, workdir, declareDBStack(m.bucketName, m.snsTopicARN))
 	if err != nil {
 		return err
 	}
-	dbObjectsStack, err := m.setup(ctx, dbObjectsStackName, workdir, declareDBObjectsStack(m.snsTopicARN != ""))
+	dbObjectsStack, err := m.setup(ctx, dbObjectsProjectName, m.stackName, workdir, declareDBObjectsStack(m.snsTopicARN != ""))
 	if err != nil {
 		return err
 	}
 
-	destroyFunc := func(stackName string, s *auto.Stack) error {
-		logger := logger.WithValues("stack", stackName)
+	destroyFunc := func(projectName string, s *auto.Stack) error {
+		logger := logger.WithValues("project", projectName)
 		logger.Info("Destroying stack")
 		// wire up our destroy to stream progress to stdout
 		stdoutStreamer := optdestroy.ProgressStreams(os.Stdout)
@@ -690,18 +689,18 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 
 	if destroy {
 		// destroy stacks in reverse order
-		if err := destroyFunc(dbObjectsStackName, &dbObjectsStack); err != nil {
+		if err := destroyFunc(dbObjectsProjectName, &dbObjectsStack); err != nil {
 			return err
 		}
-		if err := destroyFunc(dbStackName, &dbStack); err != nil {
+		if err := destroyFunc(dbProjectName, &dbStack); err != nil {
 			return err
 		}
 		// return early
 		return nil
 	}
 
-	updateFunc := func(stackName string, s *auto.Stack) error {
-		logger := logger.WithValues("stack", stackName)
+	updateFunc := func(projectName string, s *auto.Stack) error {
+		logger := logger.WithValues("project", projectName)
 		logger.Info("Updating stack")
 		// wire up our update to stream progress to stdout
 		stdoutStreamer := optup.ProgressStreams(os.Stdout)
@@ -714,13 +713,13 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 		return nil
 	}
 
-	if err := updateFunc(dbStackName, &dbStack); err != nil {
+	if err := updateFunc(dbProjectName, &dbStack); err != nil {
 		return err
 	}
 	if err := m.runSnowflakeMigrations(ctx); err != nil {
 		return err
 	}
-	if err := updateFunc(dbObjectsStackName, &dbObjectsStack); err != nil {
+	if err := updateFunc(dbObjectsProjectName, &dbObjectsStack); err != nil {
 		return err
 	}
 
