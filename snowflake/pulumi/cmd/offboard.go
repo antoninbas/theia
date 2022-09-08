@@ -29,7 +29,7 @@ to quickly create a Cobra application.`,
 		workdir, _ := cmd.Flags().GetString("workdir")
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
-		mgr := stack.NewManager(logger, stackName, bucketName, "", region, "", workdir)
+		mgr := stack.NewManager(logger, stackName, bucketName, region, "", workdir)
 		return mgr.Offboard(ctx)
 	},
 }

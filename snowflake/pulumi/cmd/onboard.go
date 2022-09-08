@@ -26,12 +26,11 @@ to quickly create a Cobra application.`,
 		region, _ := cmd.Flags().GetString("region")
 		stackName, _ := cmd.Flags().GetString("stack-name")
 		bucketName, _ := cmd.Flags().GetString("bucket-name")
-		snsTopicARN, _ := cmd.Flags().GetString("sns-topic-arn")
 		warehouseName, _ := cmd.Flags().GetString("warehouse-name")
 		workdir, _ := cmd.Flags().GetString("workdir")
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
-		mgr := stack.NewManager(logger, stackName, bucketName, snsTopicARN, region, warehouseName, workdir)
+		mgr := stack.NewManager(logger, stackName, bucketName, region, warehouseName, workdir)
 		return mgr.Onboard(ctx)
 	},
 }
@@ -43,7 +42,6 @@ func init() {
 	onboardCmd.Flags().String("stack-name", "default", "Name of the infrastructure stack: useful to deploy multiple instances in the same Snowflake account or with the same bucket (e.g., one for dev and one for prod)")
 	onboardCmd.Flags().String("bucket-name", "", "Bucket to store infra state and Antrea flows")
 	onboardCmd.MarkFlagRequired("bucket-name")
-	onboardCmd.Flags().String("sns-topic-arn", "", "ARN of the SNS Topic where Snowflake ingestion error notifications will be sent")
 	onboardCmd.Flags().String("workdir", "", "Use provided local workdir (by default a temporary one will be created")
 	onboardCmd.Flags().String("warehouse-name", "", "Snowflake Virtual Warehouse to use for onboarding queries, by default we will use a temporary one")
 }
