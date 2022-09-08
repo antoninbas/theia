@@ -37,7 +37,7 @@ const (
 	dbProjectName        = "theia-infra-db"
 	dbObjectsProjectName = "theia-infra-db-objects"
 
-	pulumiVersion                = "v3.39.1"
+	pulumiVersion                = "v3.39.3"
 	pulumiAWSPluginVersion       = "v5.13.0"
 	pulumiSnowflakePluginVersion = "v0.13.0"
 	pulumiRandomPluginVersion    = "v4.8.2"
@@ -76,7 +76,7 @@ type pulumiPlugin struct {
 	version string
 }
 
-func declareSnowflakeIngestion(randomString *random.RandomString, bucket *s3.Bucket, accountID string) func(ctx *pulumi.Context) (*snowflake.StorageIntegration, *iam.Role, error) {
+func declareSnowflakeIngestion(randomString *random.RandomString, bucket *s3.BucketV2, accountID string) func(ctx *pulumi.Context) (*snowflake.StorageIntegration, *iam.Role, error) {
 	declareFunc := func(ctx *pulumi.Context) (*snowflake.StorageIntegration, *iam.Role, error) {
 		storageIntegration, err := snowflake.NewStorageIntegration(ctx, "antrea-sf-storage-integration", &snowflake.StorageIntegrationArgs{
 			Name:                    pulumi.Sprintf("%s%s", storageIntegrationNamePrefix, randomString.ID()),
@@ -257,7 +257,7 @@ func declareSnowflakeErrorNotifications(randomString *random.RandomString, snsTo
 
 func declareSnowflakeDatabase(
 	randomString *random.RandomString,
-	bucket *s3.Bucket,
+	bucket *s3.BucketV2,
 	storageIntegration *snowflake.StorageIntegration,
 	storageIAMRole *iam.Role,
 	notificationIntegration *snowflake.NotificationIntegration,
@@ -323,17 +323,9 @@ func declareDBStack() func(ctx *pulumi.Context) error {
 			Number:  pulumi.Bool(true),
 			Special: pulumi.Bool(false),
 		})
-		bucket, err := s3.NewBucket(
-			ctx,
-			"antrea-flows-bucket",
-			&s3.BucketArgs{
-				Acl:    pulumi.String("private"),
-				Bucket: pulumi.Sprintf("%s%s", s3BucketNamePrefix, randomString.ID()),
-			},
-			// this is necessary, or the previously configured lifecyle configuration
-			// may be discared when updating the stack
-			pulumi.IgnoreChanges([]string{"lifecycleRules"}),
-		)
+		bucket, err := s3.NewBucketV2(ctx, "antrea-flows-bucket", &s3.BucketV2Args{
+			Bucket: pulumi.Sprintf("%s%s", s3BucketNamePrefix, randomString.ID()),
+		})
 		if err != nil {
 			return err
 		}
