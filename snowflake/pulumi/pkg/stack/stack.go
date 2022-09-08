@@ -19,6 +19,7 @@ import (
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/iam"
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/s3"
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/sns"
+	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/sqs"
 	"github.com/pulumi/pulumi-random/sdk/v4/go/random"
 	"github.com/pulumi/pulumi-snowflake/sdk/go/snowflake"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
@@ -45,6 +46,9 @@ const (
 	s3BucketNamePrefix       = "antrea-flows-"
 	s3BucketFlowsFolder      = "flows"
 	snsTopicNamePrefix       = "antrea-flows-"
+	sqsQueueNamePrefix       = "antrea-flows-"
+	// how long will Snowpipe error notifications be saved in SQS queue
+	sqsMessageRetentionSeconds = 7 * 24 * 3600
 
 	storageIAMRoleNamePrefix     = "antrea-sf-storage-iam-role-"
 	storageIAMPolicyNamePrefix   = "antrea-sf-storage-iam-policy-"
@@ -353,8 +357,57 @@ func declareDBStack() func(ctx *pulumi.Context) error {
 			return err
 		}
 
+		sqsQueue, err := sqs.NewQueue(ctx, "antrea-flows-sqs-queue", &sqs.QueueArgs{
+			Name:                    pulumi.Sprintf("%s%s", sqsQueueNamePrefix, randomString.ID()),
+			MessageRetentionSeconds: pulumi.Int(sqsMessageRetentionSeconds),
+		})
+		if err != nil {
+			return err
+		}
+
 		snsTopic, err := sns.NewTopic(ctx, "antrea-flows-sns-topic", &sns.TopicArgs{
 			Name: pulumi.Sprintf("%s%s", snsTopicNamePrefix, randomString.ID()),
+		})
+		if err != nil {
+			return err
+		}
+
+		sqsQueuePolicyDocument := iam.GetPolicyDocumentOutput(ctx, iam.GetPolicyDocumentOutputArgs{
+			Statements: iam.GetPolicyDocumentStatementArray{
+				iam.GetPolicyDocumentStatementArgs{
+					Sid:    pulumi.String("1"),
+					Effect: pulumi.String("Allow"),
+					Principals: iam.GetPolicyDocumentStatementPrincipalArray{
+						iam.GetPolicyDocumentStatementPrincipalArgs{
+							Type:        pulumi.String("Service"),
+							Identifiers: pulumi.ToStringArray([]string{"sns.amazonaws.com"}),
+						},
+					},
+					Actions:   pulumi.ToStringArray([]string{"sqs:SendMessage"}),
+					Resources: pulumi.StringArray([]pulumi.StringInput{sqsQueue.Arn}),
+					Conditions: iam.GetPolicyDocumentStatementConditionArray{
+						iam.GetPolicyDocumentStatementConditionArgs{
+							Test:     pulumi.String("ArnEquals"),
+							Variable: pulumi.String("aws:SourceArn"),
+							Values:   pulumi.StringArray([]pulumi.StringInput{snsTopic.Arn}),
+						},
+					},
+				},
+			},
+		})
+
+		_, err = sqs.NewQueuePolicy(ctx, "antrea-flows-sqs-queue-policy", &sqs.QueuePolicyArgs{
+			QueueUrl: sqsQueue.ID(),
+			Policy:   sqsQueuePolicyDocument.Json(),
+		})
+		if err != nil {
+			return err
+		}
+
+		_, err = sns.NewTopicSubscription(ctx, "antrea-flows-sns-subscription", &sns.TopicSubscriptionArgs{
+			Endpoint: sqsQueue.Arn,
+			Protocol: pulumi.String("sqs"),
+			Topic:    snsTopic.Arn,
 		})
 		if err != nil {
 			return err
@@ -758,10 +811,10 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 	if err != nil {
 		return err
 	}
-	dbObjectsStack, err := m.setup(ctx, dbObjectsProjectName, m.stackName, workdir, dbObjectsStackPlugins, declareDBObjectsStack(databaseName, ingestionStageName, notificationIntegrationName))
 	if err := m.runSnowflakeMigrations(ctx, databaseName); err != nil {
 		return err
 	}
+	dbObjectsStack, err := m.setup(ctx, dbObjectsProjectName, m.stackName, workdir, dbObjectsStackPlugins, declareDBObjectsStack(databaseName, ingestionStageName, notificationIntegrationName))
 	if err := updateFunc(dbObjectsProjectName, &dbObjectsStack); err != nil {
 		return err
 	}
