@@ -5,7 +5,7 @@ all: bin
 
 .PHONY: bin
 bin:
-	GOBIN=$(BINDIR) $(GO) install antrea.io/theia/snowflake/pulumi/...
+	$(GO) build -o $(BINDIR)/theia-sf antrea.io/theia/snowflake/pulumi
 
 .PHONY: test
 test:
