@@ -12,6 +12,7 @@ require (
 	github.com/go-logr/logr v1.2.3
 	github.com/go-logr/zapr v1.2.3
 	github.com/golang-migrate/migrate/v4 v4.15.2
+	github.com/olekukonko/tablewriter v0.0.0-20170122224234-a0225b3f23b5
 	github.com/pulumi/pulumi-aws/sdk/v5 v5.13.0
 	github.com/pulumi/pulumi-random/sdk/v4 v4.8.2
 	github.com/pulumi/pulumi-snowflake/sdk v0.13.0

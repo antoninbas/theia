@@ -78,17 +78,21 @@ type pulumiPlugin struct {
 
 func declareSnowflakeIngestion(randomString *random.RandomString, bucket *s3.BucketV2, accountID string) func(ctx *pulumi.Context) (*snowflake.StorageIntegration, *iam.Role, error) {
 	declareFunc := func(ctx *pulumi.Context) (*snowflake.StorageIntegration, *iam.Role, error) {
+		storageIntegrationName := randomString.Result.ApplyT(func(suffix string) string {
+			return fmt.Sprintf("%s%s", storageIntegrationNamePrefix, strings.ToUpper(suffix))
+		}).(pulumi.StringOutput)
 		storageIntegration, err := snowflake.NewStorageIntegration(ctx, "antrea-sf-storage-integration", &snowflake.StorageIntegrationArgs{
-			Name:                    pulumi.Sprintf("%s%s", storageIntegrationNamePrefix, randomString.ID()),
+			Name:                    storageIntegrationName,
 			Type:                    pulumi.String("EXTERNAL_STAGE"),
 			Enabled:                 pulumi.Bool(true),
 			StorageAllowedLocations: pulumi.StringArray([]pulumi.StringInput{pulumi.Sprintf("s3://%s/%s/", bucket.ID(), s3BucketFlowsFolder)}),
 			StorageProvider:         pulumi.String("S3"),
 			StorageAwsRoleArn:       pulumi.Sprintf("arn:aws:iam::%s:role/%s%s", accountID, storageIAMRoleNamePrefix, randomString.ID()),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return nil, nil, err
 		}
+		ctx.Export("storageIntegrationName", storageIntegration.Name)
 
 		storagePolicyDocument := iam.GetPolicyDocumentOutput(ctx, iam.GetPolicyDocumentOutputArgs{
 			Statements: iam.GetPolicyDocumentStatementArray{
@@ -126,7 +130,7 @@ func declareSnowflakeIngestion(randomString *random.RandomString, bucket *s3.Buc
 		storageIAMPolicy, err := iam.NewPolicy(ctx, "antrea-sf-storage-iam-policy", &iam.PolicyArgs{
 			Name:   pulumi.Sprintf("%s%s", storageIAMPolicyNamePrefix, randomString.ID()),
 			Policy: storagePolicyDocument.Json(),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -156,7 +160,7 @@ func declareSnowflakeIngestion(randomString *random.RandomString, bucket *s3.Buc
 		storageIAMRole, err := iam.NewRole(ctx, "antrea-sf-storage-iam-policy", &iam.RoleArgs{
 			Name:             pulumi.Sprintf("%s%s", storageIAMRoleNamePrefix, randomString.ID()),
 			AssumeRolePolicy: storageAssumeRolePolicyDocument.Json(),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -187,7 +191,7 @@ func declareSnowflakeErrorNotifications(randomString *random.RandomString, snsTo
 			Enabled:              pulumi.Bool(true),
 			NotificationProvider: pulumi.String("AWS_SNS"),
 			Type:                 pulumi.String("QUEUE"),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -207,7 +211,7 @@ func declareSnowflakeErrorNotifications(randomString *random.RandomString, snsTo
 		notificationIAMPolicy, err := iam.NewPolicy(ctx, "antrea-sf-notification-iam-policy", &iam.PolicyArgs{
 			Name:   pulumi.Sprintf("%s%s", notificationIAMPolicyNamePrefix, randomString.ID()),
 			Policy: notificationPolicyDocument.Json(),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -269,7 +273,7 @@ func declareSnowflakeDatabase(
 		}).(pulumi.StringOutput)
 		db, err := snowflake.NewDatabase(ctx, "antrea-sf-db", &snowflake.DatabaseArgs{
 			Name: databaseName,
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return err
 		}
@@ -278,7 +282,7 @@ func declareSnowflakeDatabase(
 		schema, err := snowflake.NewSchema(ctx, "antrea-sf-schema", &snowflake.SchemaArgs{
 			Database: db.Name,
 			Name:     pulumi.String(schemaName),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return err
 		}
@@ -287,24 +291,27 @@ func declareSnowflakeDatabase(
 			Database: db.Name,
 			Schema:   schema.Name,
 			Name:     pulumi.String(udfStageName),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return err
 		}
 
-		// IAMRoles need to be added as dependencies, but integrations are probbaly redundant
-		dependencies := []pulumi.Resource{storageIntegration, storageIAMRole}
-		if notificationIntegration != nil {
-			dependencies = append(dependencies, notificationIntegration, notificationIAMRole)
-		}
-
+		// IAMRoles need to be added as dependencies, but integrations are probably redundant
+		dependencies := []pulumi.Resource{storageIntegration, storageIAMRole, notificationIntegration, notificationIAMRole}
+		// This declaration should stay in the "DBStack" and not be moved to the
+		// "DBObjectsStack": it's important to keep the dependency on storageIntegration. It
+		// seems that the Snowflake provider doesn't support a change to the
+		// "storageIntegration" property if the storage integration resource doesn't exist
+		// any more. The "DESCRIBE STAGE" query will fail with the following error:
+		// SQL compilation error: Integration 'ANTREA_FLOWS_STORAGE_INTEGRATION_9ks9co4m6y8jmere' associated with the stage 'FLOWSTAGE' cannot be found.
+		// Which means the stack cannot even be refreshed.
 		_, err = snowflake.NewStage(ctx, "antrea-sf-ingestion-stage", &snowflake.StageArgs{
 			Database:           db.Name,
 			Schema:             schema.Name,
 			Name:               pulumi.String(ingestionStageName),
 			Url:                pulumi.Sprintf("s3://%s/%s/", bucket.ID(), s3BucketFlowsFolder),
 			StorageIntegration: storageIntegration.Name,
-		}, pulumi.DependsOn([]pulumi.Resource{storageIntegration, storageIAMRole}))
+		}, pulumi.DependsOn(dependencies), pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return err
 		}
@@ -323,9 +330,11 @@ func declareDBStack() func(ctx *pulumi.Context) error {
 			Number:  pulumi.Bool(true),
 			Special: pulumi.Bool(false),
 		})
+		// when disabling auto-naming, it's safer to use DeleteBeforeReplace
+		// see https://www.pulumi.com/docs/intro/concepts/resources/names/#autonaming
 		bucket, err := s3.NewBucketV2(ctx, "antrea-flows-bucket", &s3.BucketV2Args{
 			Bucket: pulumi.Sprintf("%s%s", s3BucketNamePrefix, randomString.ID()),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return err
 		}
@@ -353,17 +362,19 @@ func declareDBStack() func(ctx *pulumi.Context) error {
 		sqsQueue, err := sqs.NewQueue(ctx, "antrea-flows-sqs-queue", &sqs.QueueArgs{
 			Name:                    pulumi.Sprintf("%s%s", sqsQueueNamePrefix, randomString.ID()),
 			MessageRetentionSeconds: pulumi.Int(sqsMessageRetentionSeconds),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return err
 		}
+		ctx.Export("sqsQueueARN", sqsQueue.Arn)
 
 		snsTopic, err := sns.NewTopic(ctx, "antrea-flows-sns-topic", &sns.TopicArgs{
 			Name: pulumi.Sprintf("%s%s", snsTopicNamePrefix, randomString.ID()),
-		})
+		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return err
 		}
+		ctx.Export("snsTopicARN", snsTopic.Arn)
 
 		sqsQueuePolicyDocument := iam.GetPolicyDocumentOutput(ctx, iam.GetPolicyDocumentOutputArgs{
 			Statements: iam.GetPolicyDocumentStatementArray{
@@ -430,7 +441,7 @@ func declareDBStack() func(ctx *pulumi.Context) error {
 	return declareFunc
 }
 
-func declareDBObjectsStack(bucketID string, databaseName string, ingestionStageName string, notificationIntegrationName string) func(ctx *pulumi.Context) error {
+func declareDBObjectsStack(bucketID string, databaseName string, notificationIntegrationName string) func(ctx *pulumi.Context) error {
 	declareFunc := func(ctx *pulumi.Context) error {
 		pipeArgs := &snowflake.PipeArgs{
 			Database:         pulumi.String(databaseName),
@@ -443,7 +454,7 @@ func declareDBObjectsStack(bucketID string, databaseName string, ingestionStageN
 		}
 
 		// a bit of defensive programming: explicit dependency on ingestionStage may not be strictly required
-		pipe, err := snowflake.NewPipe(ctx, "antrea-sf-auto-ingest-pipe", pipeArgs)
+		pipe, err := snowflake.NewPipe(ctx, "antrea-sf-auto-ingest-pipe", pipeArgs, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return err
 		}
@@ -474,7 +485,7 @@ func declareDBObjectsStack(bucketID string, databaseName string, ingestionStageN
 				SqlStatement:                        pulumi.Sprintf("DELETE FROM %s WHERE DATEDIFF(day, timeInserted, CURRENT_TIMESTAMP) > %d", flowsTableName, flowRetentionDays),
 				UserTaskManagedInitialWarehouseSize: pulumi.String("XSMALL"),
 				Enabled:                             pulumi.Bool(true),
-			})
+			}, pulumi.DeleteBeforeReplace(true))
 			if err != nil {
 				return err
 			}
@@ -709,14 +720,25 @@ func (m *Manager) runSnowflakeMigrations(ctx context.Context, databaseName strin
 	return nil
 }
 
-func (m *Manager) run(ctx context.Context, destroy bool) error {
+type Result struct {
+	Region            string
+	BucketName        string
+	BucketFlowsFolder string
+	DatabaseName      string
+	SchemaName        string
+	FlowsTableName    string
+	SNSTopicARN       string
+	SQSQueueARN       string
+}
+
+func (m *Manager) run(ctx context.Context, destroy bool) (*Result, error) {
 	logger := m.logger
 	workdir := m.workdir
 	if workdir == "" {
 		var err error
 		workdir, err = createTemporaryWorkdir()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		logger.Info("Created temporary workdir", "path", workdir)
 		defer deleteTemporaryWorkdir(workdir)
@@ -724,12 +746,12 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 		var err error
 		workdir, err = filepath.Abs(workdir)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	logger.Info("Downloading and installing Pulumi")
 	if err := installPulumiCLI(ctx, logger, workdir); err != nil {
-		return fmt.Errorf("error when installing Pulumi: %w", err)
+		return nil, fmt.Errorf("error when installing Pulumi: %w", err)
 	}
 	os.Setenv("PATH", filepath.Join(workdir, "pulumi"))
 	logger.Info("Installed Pulumi")
@@ -744,7 +766,7 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 	}
 	dbStack, err := m.setup(ctx, dbProjectName, m.stackName, workdir, dbStackPlugins, declareDBStack())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	destroyFunc := func(projectName string, s *auto.Stack) error {
@@ -764,49 +786,48 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 		return nil
 	}
 
-	getFirstStackOutputs := func() (bucketID, databaseName, notificationIntegrationName string, err error) {
+	getFirstStackOutputs := func() (map[string]string, error) {
+		result := make(map[string]string)
 		outs, err := dbStack.Outputs(ctx)
 		if err != nil {
-			err = fmt.Errorf("failed to get outputs from first stack: %w", err)
-			return
+			return nil, fmt.Errorf("failed to get outputs from first stack: %w", err)
 		}
-		var ok bool
-		bucketID, ok = outs["bucketID"].Value.(string)
-		if !ok {
-			err = fmt.Errorf("failed to get bucketID from first stack outputs")
-			return
+		names := []string{"bucketID", "databaseName", "storageIntegrationName", "notificationIntegrationName", "snsTopicARN", "sqsQueueARN"}
+		for _, name := range names {
+			v, ok := outs[name].Value.(string)
+			if !ok {
+				return nil, fmt.Errorf("failed to get '%s' from first stack outputs", name)
+			}
+			result[name] = v
 		}
-		databaseName, ok = outs["databaseName"].Value.(string)
-		if !ok {
-			err = fmt.Errorf("failed to get databaseName from first stack outputs")
-			return
-		}
-		notificationIntegrationName, ok = outs["notificationIntegrationName"].Value.(string)
-		if !ok {
-			err = fmt.Errorf("failed to get notificationIntegrationName from first stack outputs")
-			return
-		}
-		return
+		return result, nil
 	}
 
 	if destroy {
 		// destroy stacks in reverse order
-		bucketID, databaseName, notificationIntegrationName, err := getFirstStackOutputs()
+		outs, err := getFirstStackOutputs()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		dbObjectsStack, err := m.setup(ctx, dbObjectsProjectName, m.stackName, workdir, dbObjectsStackPlugins, declareDBObjectsStack(bucketID, databaseName, ingestionStageName, notificationIntegrationName))
+		dbObjectsStack, err := m.setup(
+			ctx,
+			dbObjectsProjectName,
+			m.stackName,
+			workdir,
+			dbObjectsStackPlugins,
+			declareDBObjectsStack(outs["bucketID"], outs["databaseName"], outs["notificationIntegrationName"]),
+		)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if err := destroyFunc(dbObjectsProjectName, &dbObjectsStack); err != nil {
-			return err
+			return nil, err
 		}
 		if err := destroyFunc(dbProjectName, &dbStack); err != nil {
-			return err
+			return nil, err
 		}
 		// return early
-		return nil
+		return &Result{}, nil
 	}
 
 	updateFunc := func(projectName string, s *auto.Stack) error {
@@ -824,27 +845,47 @@ func (m *Manager) run(ctx context.Context, destroy bool) error {
 	}
 
 	if err := updateFunc(dbProjectName, &dbStack); err != nil {
-		return err
+		return nil, err
 	}
-	bucketID, databaseName, notificationIntegrationName, err := getFirstStackOutputs()
+	outs, err := getFirstStackOutputs()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := m.runSnowflakeMigrations(ctx, databaseName); err != nil {
-		return err
+	if err := m.runSnowflakeMigrations(ctx, outs["databaseName"]); err != nil {
+		return nil, err
 	}
-	dbObjectsStack, err := m.setup(ctx, dbObjectsProjectName, m.stackName, workdir, dbObjectsStackPlugins, declareDBObjectsStack(bucketID, databaseName, ingestionStageName, notificationIntegrationName))
+	dbObjectsStack, err := m.setup(
+		ctx,
+		dbObjectsProjectName,
+		m.stackName,
+		workdir,
+		dbObjectsStackPlugins,
+		declareDBObjectsStack(outs["bucketID"], outs["databaseName"], outs["notificationIntegrationName"]),
+	)
+	if err != nil {
+		return nil, err
+	}
 	if err := updateFunc(dbObjectsProjectName, &dbObjectsStack); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return &Result{
+		Region:            m.region,
+		BucketName:        outs["bucketID"],
+		BucketFlowsFolder: s3BucketFlowsFolder,
+		DatabaseName:      outs["databaseName"],
+		SchemaName:        schemaName,
+		FlowsTableName:    flowsTableName,
+		SNSTopicARN:       outs["snsTopicARN"],
+		SQSQueueARN:       outs["sqsQueueARN"],
+	}, nil
 }
 
-func (m *Manager) Onboard(ctx context.Context) error {
+func (m *Manager) Onboard(ctx context.Context) (*Result, error) {
 	return m.run(ctx, false)
 }
 
 func (m *Manager) Offboard(ctx context.Context) error {
-	return m.run(ctx, true)
+	_, err := m.run(ctx, true)
+	return err
 }

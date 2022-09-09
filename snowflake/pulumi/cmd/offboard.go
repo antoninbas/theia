@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -38,7 +39,12 @@ to quickly create a Cobra application.`,
 			}
 		}
 		mgr := stack.NewManager(logger, stackName, bucketName, bucketRegion, region, "", workdir)
-		return mgr.Offboard(ctx)
+		if err := mgr.Offboard(ctx); err != nil {
+			return err
+		}
+		fmt.Println("SUCCESS!")
+		fmt.Println("To re-create infrastructure, run 'theia-sf onboard' again")
+		return nil
 	},
 }
 

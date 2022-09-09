@@ -5,8 +5,11 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"time"
 
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 
 	"antrea.io/theia/snowflake/pulumi/pkg/stack"
@@ -39,8 +42,33 @@ to quickly create a Cobra application.`,
 			}
 		}
 		mgr := stack.NewManager(logger, stackName, bucketName, bucketRegion, region, warehouseName, workdir)
-		return mgr.Onboard(ctx)
+		result, err := mgr.Onboard(ctx)
+		if err != nil {
+			return err
+		}
+		showResults(result)
+		fmt.Println("SUCCESS!")
+		fmt.Println("To update infrastructure, run 'theia-sf onboard' again")
+		fmt.Println("To destroy all infrastructure, run 'theia-sf offboard'")
+		return nil
 	},
+}
+
+func showResults(result *stack.Result) {
+	table := tablewriter.NewWriter(os.Stdout)
+	data := [][]string{
+		[]string{"Region", result.Region},
+		[]string{"Bucket Name", result.BucketName},
+		[]string{"Bucket Flows Folder", result.BucketFlowsFolder},
+		[]string{"Snowflake Database Name", result.DatabaseName},
+		[]string{"Snowflake Schema Name", result.SchemaName},
+		[]string{"Snowflake Flows Table Name", result.FlowsTableName},
+		[]string{"SNS Topic ARN", result.SNSTopicARN},
+		[]string{"SQS Queue ARN", result.SQSQueueARN},
+	}
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.AppendBulk(data)
+	table.Render()
 }
 
 func init() {
