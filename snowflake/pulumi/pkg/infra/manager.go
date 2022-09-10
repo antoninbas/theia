@@ -270,7 +270,7 @@ func (m *Manager) setup(
 	logger.Info("Created stack")
 	w := s.Workspace()
 	for _, plugin := range requiredPlugins {
-		logger.Info("Installing Pulumi plugin", "plugin", plugin.name)
+		logger.Info("Installing Pulumi plugin", "plugin", plugin.name, "version", plugin.version)
 		if err := w.InstallPlugin(ctx, plugin.name, plugin.version); err != nil {
 			return s, fmt.Errorf("failed to install Pulumi plugin %s: %w", plugin.name, err)
 		}
