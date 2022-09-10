@@ -12,7 +12,7 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 
-	"antrea.io/theia/snowflake/pulumi/pkg/stack"
+	"antrea.io/theia/snowflake/pulumi/pkg/infra"
 )
 
 // onboardCmd represents the onboard command
@@ -41,7 +41,7 @@ to quickly create a Cobra application.`,
 				return err
 			}
 		}
-		mgr := stack.NewManager(logger, stackName, bucketName, bucketRegion, region, warehouseName, workdir)
+		mgr := infra.NewManager(logger, stackName, bucketName, bucketRegion, region, warehouseName, workdir)
 		result, err := mgr.Onboard(ctx)
 		if err != nil {
 			return err
@@ -54,7 +54,7 @@ to quickly create a Cobra application.`,
 	},
 }
 
-func showResults(result *stack.Result) {
+func showResults(result *infra.Result) {
 	table := tablewriter.NewWriter(os.Stdout)
 	data := [][]string{
 		[]string{"Region", result.Region},

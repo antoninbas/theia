@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"antrea.io/theia/snowflake/pulumi/pkg/stack"
+	"antrea.io/theia/snowflake/pulumi/pkg/infra"
 )
 
 // offboardCmd represents the offboard command
@@ -38,7 +38,7 @@ to quickly create a Cobra application.`,
 				return err
 			}
 		}
-		mgr := stack.NewManager(logger, stackName, bucketName, bucketRegion, region, "", workdir)
+		mgr := infra.NewManager(logger, stackName, bucketName, bucketRegion, region, "", workdir)
 		if err := mgr.Offboard(ctx); err != nil {
 			return err
 		}
