@@ -29,6 +29,7 @@ to quickly create a Cobra application.`,
 		bucketName, _ := cmd.Flags().GetString("bucket-name")
 		bucketRegion, _ := cmd.Flags().GetString("bucket-region")
 		workdir, _ := cmd.Flags().GetString("workdir")
+		verbose, _ := cmd.Flags().GetBool("verbose")
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
 		if bucketRegion == "" {
@@ -38,7 +39,7 @@ to quickly create a Cobra application.`,
 				return err
 			}
 		}
-		mgr := infra.NewManager(logger, stackName, bucketName, bucketRegion, region, "", workdir)
+		mgr := infra.NewManager(logger, stackName, bucketName, bucketRegion, region, "", workdir, verbose)
 		if err := mgr.Offboard(ctx); err != nil {
 			return err
 		}
@@ -57,4 +58,5 @@ func init() {
 	offboardCmd.MarkFlagRequired("bucket-name")
 	offboardCmd.Flags().String("bucket-region", "", "Region where infra bucket is defined; if omitted, we will try to get the region from AWS")
 	offboardCmd.Flags().String("workdir", "", "Use provided local workdir (by default a temporary one will be created")
+	offboardCmd.Flags().Bool("verbose", false, "Output detailed information to stdout about infrastructure provisioning")
 }

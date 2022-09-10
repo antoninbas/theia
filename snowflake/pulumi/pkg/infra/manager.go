@@ -208,6 +208,7 @@ type Manager struct {
 	region            string
 	warehouseName     string
 	workdir           string
+	verbose           bool
 }
 
 func NewManager(
@@ -218,6 +219,7 @@ func NewManager(
 	region string,
 	warehouseName string,
 	workdir string,
+	verbose bool, // output Pulumi progress to stdout
 ) *Manager {
 	return &Manager{
 		logger:            logger.WithValues("project", projectName, "stack", stackName),
@@ -227,6 +229,7 @@ func NewManager(
 		region:            region,
 		warehouseName:     warehouseName,
 		workdir:           workdir,
+		verbose:           verbose,
 	}
 }
 
@@ -367,9 +370,14 @@ func (m *Manager) run(ctx context.Context, destroy bool) (*Result, error) {
 
 	destroyFunc := func() error {
 		logger.Info("Destroying stack")
-		// wire up our destroy to stream progress to stdout
-		stdoutStreamer := optdestroy.ProgressStreams(os.Stdout)
-		if _, err := s.Destroy(ctx, stdoutStreamer); err != nil {
+		var progressStream io.Writer
+		if m.verbose {
+			// wire up our destroy to stream progress to stdout
+			progressStream = os.Stdout
+		} else {
+			progressStream = io.Discard
+		}
+		if _, err := s.Destroy(ctx, optdestroy.ProgressStreams(progressStream)); err != nil {
 			return err
 		}
 		logger.Info("Destroyed stack")
@@ -391,9 +399,14 @@ func (m *Manager) run(ctx context.Context, destroy bool) (*Result, error) {
 
 	updateFunc := func() (auto.UpResult, error) {
 		logger.Info("Updating stack")
-		// wire up our update to stream progress to stdout
-		stdoutStreamer := optup.ProgressStreams(os.Stdout)
-		res, err := s.Up(ctx, stdoutStreamer)
+		var progressStream io.Writer
+		if m.verbose {
+			// wire up our update to stream progress to stdout
+			progressStream = os.Stdout
+		} else {
+			progressStream = io.Discard
+		}
+		res, err := s.Up(ctx, optup.ProgressStreams(progressStream))
 		if err != nil {
 			return res, err
 		}

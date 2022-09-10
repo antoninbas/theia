@@ -32,6 +32,7 @@ to quickly create a Cobra application.`,
 		bucketRegion, _ := cmd.Flags().GetString("bucket-region")
 		warehouseName, _ := cmd.Flags().GetString("warehouse-name")
 		workdir, _ := cmd.Flags().GetString("workdir")
+		verbose, _ := cmd.Flags().GetBool("verbose")
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
 		if bucketRegion == "" {
@@ -41,7 +42,7 @@ to quickly create a Cobra application.`,
 				return err
 			}
 		}
-		mgr := infra.NewManager(logger, stackName, bucketName, bucketRegion, region, warehouseName, workdir)
+		mgr := infra.NewManager(logger, stackName, bucketName, bucketRegion, region, warehouseName, workdir, verbose)
 		result, err := mgr.Onboard(ctx)
 		if err != nil {
 			return err
@@ -81,4 +82,5 @@ func init() {
 	onboardCmd.Flags().String("bucket-region", "", "Region where infra bucket is defined; if omitted, we will try to get the region from AWS")
 	onboardCmd.Flags().String("workdir", "", "Use provided local workdir (by default a temporary one will be created")
 	onboardCmd.Flags().String("warehouse-name", "", "Snowflake Virtual Warehouse to use for onboarding queries, by default we will use a temporary one")
+	onboardCmd.Flags().Bool("verbose", false, "Output detailed information to stdout about infrastructure provisioning")
 }
