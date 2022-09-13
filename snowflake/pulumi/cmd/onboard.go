@@ -29,6 +29,7 @@ to quickly create a Cobra application.`,
 		region, _ := cmd.Flags().GetString("region")
 		stackName, _ := cmd.Flags().GetString("stack-name")
 		bucketName, _ := cmd.Flags().GetString("bucket-name")
+		bucketPrefix, _ := cmd.Flags().GetString("bucket-prefix")
 		bucketRegion, _ := cmd.Flags().GetString("bucket-region")
 		warehouseName, _ := cmd.Flags().GetString("warehouse-name")
 		workdir, _ := cmd.Flags().GetString("workdir")
@@ -42,7 +43,8 @@ to quickly create a Cobra application.`,
 				return err
 			}
 		}
-		mgr := infra.NewManager(logger, stackName, bucketName, bucketRegion, region, warehouseName, workdir, verbose)
+		stateBackendURL := infra.S3StateBackendURL(bucketName, bucketPrefix, bucketRegion)
+		mgr := infra.NewManager(logger, stackName, stateBackendURL, region, warehouseName, workdir, verbose)
 		result, err := mgr.Onboard(ctx)
 		if err != nil {
 			return err
@@ -79,6 +81,7 @@ func init() {
 	onboardCmd.Flags().String("stack-name", "default", "Name of the infrastructure stack: useful to deploy multiple instances in the same Snowflake account or with the same bucket (e.g., one for dev and one for prod)")
 	onboardCmd.Flags().String("bucket-name", "", "Bucket to store infra state and Antrea flows")
 	onboardCmd.MarkFlagRequired("bucket-name")
+	onboardCmd.Flags().String("bucket-prefix", "antrea-flows-infra", "Prefix to use to store infra state and Antrea flows")
 	onboardCmd.Flags().String("bucket-region", "", "Region where infra bucket is defined; if omitted, we will try to get the region from AWS")
 	onboardCmd.Flags().String("workdir", "", "Use provided local workdir (by default a temporary one will be created")
 	onboardCmd.Flags().String("warehouse-name", "", "Snowflake Virtual Warehouse to use for onboarding queries, by default we will use a temporary one")

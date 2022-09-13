@@ -201,35 +201,32 @@ func installMigrateSnowflakeCLI(ctx context.Context, logger logr.Logger, dir str
 }
 
 type Manager struct {
-	logger            logr.Logger
-	stackName         string
-	infraBucketName   string
-	infraBucketRegion string
-	region            string
-	warehouseName     string
-	workdir           string
-	verbose           bool
+	logger          logr.Logger
+	stackName       string
+	stateBackendURL string
+	region          string
+	warehouseName   string
+	workdir         string
+	verbose         bool
 }
 
 func NewManager(
 	logger logr.Logger,
 	stackName string,
-	infraBucketName string,
-	infraBucketRegion string,
+	stateBackendURL string,
 	region string,
 	warehouseName string,
 	workdir string,
 	verbose bool, // output Pulumi progress to stdout
 ) *Manager {
 	return &Manager{
-		logger:            logger.WithValues("project", projectName, "stack", stackName),
-		stackName:         stackName,
-		infraBucketName:   infraBucketName,
-		infraBucketRegion: infraBucketRegion,
-		region:            region,
-		warehouseName:     warehouseName,
-		workdir:           workdir,
-		verbose:           verbose,
+		logger:          logger.WithValues("project", projectName, "stack", stackName),
+		stackName:       stackName,
+		stateBackendURL: stateBackendURL,
+		region:          region,
+		warehouseName:   warehouseName,
+		workdir:         workdir,
+		verbose:         verbose,
 	}
 }
 
@@ -253,7 +250,7 @@ func (m *Manager) setup(
 			Runtime: workspace.NewProjectRuntimeInfo("go", nil),
 			Main:    workdir,
 			Backend: &workspace.ProjectBackend{
-				URL: fmt.Sprintf("s3://%s/%s?region=%s", m.infraBucketName, "antrea-flows-infra", m.infraBucketRegion),
+				URL: m.stateBackendURL,
 			},
 		}),
 		auto.EnvVars(map[string]string{
