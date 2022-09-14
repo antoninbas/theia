@@ -4,6 +4,7 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/go-logr/zapr"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var verbosity int
@@ -28,18 +30,20 @@ examples and usage of using your application. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if verbosity < 0 || verbosity >= 128 {
+			return fmt.Errorf("invalid verbosity level %d: it should be >= 0 and < 128", verbosity)
+		}
 		zc := zap.NewProductionConfig()
-		zc.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+		zc.Level = zap.NewAtomicLevelAt(zapcore.Level(-1 * verbosity))
 		zc.DisableStacktrace = true
 		zapLog, err := zc.Build()
 		if err != nil {
+			return fmt.Errorf("cannot initialize Zap logger: %w", err)
 			panic("Cannot initialize Zap logger")
 		}
 		logger = zapr.NewLogger(zapLog)
+		return nil
 	},
 }
 
