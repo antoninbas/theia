@@ -255,11 +255,11 @@ func declareSnowflakeDatabase(
 		dbMigrations, err := local.NewCommand(ctx, "antrea-sf-run-db-migrations", &local.CommandArgs{
 			// we will ignore changes to create because the warehouse name can change
 			Create: pulumi.Sprintf("./migrate-snowflake -source file://%s -database %s -schema %s -warehouse %s", migrationsDir, db.Name, schema.Name, warehouseName),
-			Environment: pulumi.ToStringMap(map[string]string{
-				"SNOWFLAKE_ACCOUNT":  os.Getenv("SNOWFLAKE_ACCOUNT"),
-				"SNOWFLAKE_USER":     os.Getenv("SNOWFLAKE_USER"),
-				"SNOWFLAKE_PASSWORD": os.Getenv("SNOWFLAKE_PASSWORD"),
-			}),
+			Environment: pulumi.StringMap{
+				"SNOWFLAKE_ACCOUNT":  pulumi.ToSecret(os.Getenv("SNOWFLAKE_ACCOUNT")).(pulumi.StringOutput),
+				"SNOWFLAKE_USER":     pulumi.ToSecret(os.Getenv("SNOWFLAKE_USER")).(pulumi.StringOutput),
+				"SNOWFLAKE_PASSWORD": pulumi.ToSecret(os.Getenv("SNOWFLAKE_PASSWORD")).(pulumi.StringOutput),
+			},
 			// migrations are idempotent so for now we always run them
 			Triggers: pulumi.Array([]pulumi.Input{db.ID(), schema.ID(), pulumi.Int(rand.Int())}),
 		}, pulumi.Parent(schema), pulumi.DeleteBeforeReplace(true), pulumi.ReplaceOnChanges([]string{"environment"}), pulumi.IgnoreChanges([]string{"create"}))

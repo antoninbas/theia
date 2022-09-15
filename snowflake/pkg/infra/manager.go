@@ -201,32 +201,35 @@ func installMigrateSnowflakeCLI(ctx context.Context, logger logr.Logger, dir str
 }
 
 type Manager struct {
-	logger          logr.Logger
-	stackName       string
-	stateBackendURL string
-	region          string
-	warehouseName   string
-	workdir         string
-	verbose         bool
+	logger             logr.Logger
+	stackName          string
+	stateBackendURL    string
+	secretsProviderURL string
+	region             string
+	warehouseName      string
+	workdir            string
+	verbose            bool
 }
 
 func NewManager(
 	logger logr.Logger,
 	stackName string,
 	stateBackendURL string,
+	secretsProviderURL string,
 	region string,
 	warehouseName string,
 	workdir string,
 	verbose bool, // output Pulumi progress to stdout
 ) *Manager {
 	return &Manager{
-		logger:          logger.WithValues("project", projectName, "stack", stackName),
-		stackName:       stackName,
-		stateBackendURL: stateBackendURL,
-		region:          region,
-		warehouseName:   warehouseName,
-		workdir:         workdir,
-		verbose:         verbose,
+		logger:             logger.WithValues("project", projectName, "stack", stackName),
+		stackName:          stackName,
+		stateBackendURL:    stateBackendURL,
+		secretsProviderURL: secretsProviderURL,
+		region:             region,
+		warehouseName:      warehouseName,
+		workdir:            workdir,
+		verbose:            verbose,
 	}
 }
 
@@ -239,11 +242,15 @@ func (m *Manager) setup(
 ) (auto.Stack, error) {
 	logger := m.logger
 	logger.Info("Creating stack")
-	s, err := auto.UpsertStackInlineSource(
-		ctx,
-		fmt.Sprintf("%s.%s", projectName, stackName),
-		projectName,
-		declareFunc,
+	secretsProvider := m.secretsProviderURL
+	passphrase := os.Getenv("PULUMI_CONFIG_PASSPHRASE")
+	// If KMS is not used to encrypt secrets, setting
+	// PULUMI_CONFIG_PASSPHRASE is not useful. If neither is set, secrets
+	// will be in "plain text" in the state backend (S3 bucket).
+	if secretsProvider == "" && passphrase == "" {
+		logger.Info("No secrets provider configured and PULUMI_CONFIG_PASSPHRASE env variable empty: secrets will be stored in plain text in backend")
+	}
+	opts := []auto.LocalWorkspaceOption{
 		auto.WorkDir(workdir),
 		auto.Project(workspace.Project{
 			Name:    tokens.PackageName(projectName),
@@ -254,12 +261,26 @@ func (m *Manager) setup(
 			},
 		}),
 		auto.EnvVars(map[string]string{
-			// we do not store any secrets
-			// additionally, any state file is only stored on disk temporarily and the
-			// only persistent storage is in the S3 bucket
-			// note that Pulumi does not not store credentials (e.g., AWScredentials)
-			"PULUMI_CONFIG_PASSPHRASE": "",
+			"PULUMI_CONFIG_PASSPHRASE": os.Getenv("PULUMI_CONFIG_PASSPHRASE"),
 		}),
+	}
+	if secretsProvider != "" {
+		opts = append(
+			opts,
+			auto.SecretsProvider(secretsProvider),
+			auto.Stacks(map[string]workspace.ProjectStack{
+				stackName: {
+					SecretsProvider: secretsProvider,
+				},
+			}),
+		)
+	}
+	s, err := auto.UpsertStackInlineSource(
+		ctx,
+		fmt.Sprintf("%s.%s", projectName, stackName),
+		projectName,
+		declareFunc,
+		opts...,
 	)
 	if err != nil {
 		return s, err

@@ -28,8 +28,10 @@ to bring your own Snowflake and AWS accounts.
    SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD
 3. choose an AWS S3 bucket which will be used to store infrastructure state;
    you can create one with "theia-sf create-bucket" if needed
-4. provision infrastructure with:
-   "theia-sf onboard --bucket-name <YOUR BUCKET NAME>"
+4. choose an AWS KMS key which will be used to encrypt infrastructure state;
+   you can create one with "theia-sf create-kms-key" if needed
+5. provision infrastructure with:
+   "theia-sf onboard --bucket-name <YOUR BUCKET NAME> --key-id <YOUR KMS KEY ID>"
 
 You can run the "onboard" command multiple times as it is idempotent. When
 upgrading this application to a more recent version, it is safe to run "onboard"
@@ -47,6 +49,8 @@ own by using the "--warehouse-name" parameter.`,
 		bucketName, _ := cmd.Flags().GetString("bucket-name")
 		bucketPrefix, _ := cmd.Flags().GetString("bucket-prefix")
 		bucketRegion, _ := cmd.Flags().GetString("bucket-region")
+		keyID, _ := cmd.Flags().GetString("key-id")
+		keyRegion, _ := cmd.Flags().GetString("key-region")
 		warehouseName, _ := cmd.Flags().GetString("warehouse-name")
 		workdir, _ := cmd.Flags().GetString("workdir")
 		verbose := verbosity >= 2
@@ -60,7 +64,14 @@ own by using the "--warehouse-name" parameter.`,
 			}
 		}
 		stateBackendURL := infra.S3StateBackendURL(bucketName, bucketPrefix, bucketRegion)
-		mgr := infra.NewManager(logger, stackName, stateBackendURL, region, warehouseName, workdir, verbose)
+		var secretsProviderURL string
+		if keyID != "" {
+			if keyRegion == "" {
+				keyRegion = region
+			}
+			secretsProviderURL = infra.KmsSecretsProviderURL(keyID, keyRegion)
+		}
+		mgr := infra.NewManager(logger, stackName, stateBackendURL, secretsProviderURL, region, warehouseName, workdir, verbose)
 		result, err := mgr.Onboard(ctx)
 		if err != nil {
 			return err
@@ -99,6 +110,8 @@ func init() {
 	onboardCmd.MarkFlagRequired("bucket-name")
 	onboardCmd.Flags().String("bucket-prefix", "antrea-flows-infra", "prefix to use to store infra state")
 	onboardCmd.Flags().String("bucket-region", "", "region where infra bucket is defined; if omitted, we will try to get the region from AWS")
+	onboardCmd.Flags().String("key-id", GetEnv("THEIA_SF_KMS_KEY_ID", ""), "Kms key ID")
+	onboardCmd.Flags().String("key-region", "", "Kms Key region")
 	onboardCmd.Flags().String("workdir", "", "use provided local workdir (by default a temporary one will be created")
 	onboardCmd.Flags().String("warehouse-name", "", "Snowflake Virtual Warehouse to use for onboarding queries, by default we will use a temporary one")
 }

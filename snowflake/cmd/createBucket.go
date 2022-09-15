@@ -51,7 +51,11 @@ To create a bucket with a random name in a specific non-default region:
 
 		}
 		s3Client := s3client.GetClient(awsCfg)
-		return createBucket(ctx, s3Client, bucketName, region)
+		if err := createBucket(ctx, s3Client, bucketName, region); err != nil {
+			return err
+		}
+		fmt.Printf("Bucket name: %s\n", bucketName)
+		return nil
 	},
 }
 

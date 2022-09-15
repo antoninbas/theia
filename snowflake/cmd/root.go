@@ -36,9 +36,10 @@ started:
    SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD
 3. choose an AWS S3 bucket which will be used to store infrastructure state;
    you can create one with "theia-sf create-bucket" if needed
-4. provision infrastructure with:
-   "theia-sf onboard --bucket-name <YOUR BUCKET NAME>"
-`,
+4. choose an AWS KMS key which will be used to encrypt infrastructure state;
+   you can create one with "theia-sf create-kms-key" if needed
+5. provision infrastructure with:
+   "theia-sf onboard --bucket-name <YOUR BUCKET NAME> --key-id <YOUR KMS KEY ID>"`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if verbosity < 0 || verbosity >= 128 {
 			return fmt.Errorf("invalid verbosity level %d: it should be >= 0 and < 128", verbosity)

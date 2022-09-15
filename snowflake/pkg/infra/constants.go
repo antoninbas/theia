@@ -7,7 +7,7 @@ const (
 	pulumiAWSPluginVersion       = "v5.13.0"
 	pulumiSnowflakePluginVersion = "v0.13.0"
 	pulumiRandomPluginVersion    = "v4.8.2"
-	pulumiCommandPluginVersion   = "v0.5.1"
+	pulumiCommandPluginVersion   = "v0.5.2"
 
 	migrateSnowflakeVersion = "v0.2.0"
 

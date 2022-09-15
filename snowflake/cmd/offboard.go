@@ -34,6 +34,8 @@ For example:
 		bucketName, _ := cmd.Flags().GetString("bucket-name")
 		bucketPrefix, _ := cmd.Flags().GetString("bucket-prefix")
 		bucketRegion, _ := cmd.Flags().GetString("bucket-region")
+		keyID, _ := cmd.Flags().GetString("key-id")
+		keyRegion, _ := cmd.Flags().GetString("key-region")
 		workdir, _ := cmd.Flags().GetString("workdir")
 		verbose := verbosity >= 2
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
@@ -46,7 +48,14 @@ For example:
 			}
 		}
 		stateBackendURL := infra.S3StateBackendURL(bucketName, bucketPrefix, bucketRegion)
-		mgr := infra.NewManager(logger, stackName, stateBackendURL, region, "", workdir, verbose)
+		var secretsProviderURL string
+		if keyID != "" {
+			if keyRegion == "" {
+				keyRegion = region
+			}
+			secretsProviderURL = infra.KmsSecretsProviderURL(keyID, keyRegion)
+		}
+		mgr := infra.NewManager(logger, stackName, stateBackendURL, secretsProviderURL, region, "", workdir, verbose)
 		if err := mgr.Offboard(ctx); err != nil {
 			return err
 		}
@@ -65,5 +74,7 @@ func init() {
 	offboardCmd.MarkFlagRequired("bucket-name")
 	offboardCmd.Flags().String("bucket-prefix", "antrea-flows-infra", "prefix to use to store infra state")
 	offboardCmd.Flags().String("bucket-region", "", "region where infra bucket is defined; if omitted, we will try to get the region from AWS")
+	offboardCmd.Flags().String("key-id", GetEnv("THEIA_SF_KMS_KEY_ID", ""), "Kms Key ID")
+	offboardCmd.Flags().String("key-region", "", "Kms Key region")
 	offboardCmd.Flags().String("workdir", "", "use provided local workdir (by default a temporary one will be created")
 }
