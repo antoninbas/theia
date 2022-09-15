@@ -3,11 +3,19 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 
 	s3client "antrea.io/theia/snowflake/pulumi/pkg/aws/client/s3"
 )
+
+func GetEnv(key string, defaultValue string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return defaultValue
+}
 
 func GetBucketRegion(ctx context.Context, bucket string, regionHint string) (string, error) {
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(regionHint))

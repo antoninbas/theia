@@ -16,16 +16,26 @@ import (
 	sqsclient "antrea.io/theia/snowflake/pulumi/pkg/aws/client/sqs"
 )
 
-// receiveSqsMessageCmd represents the receiveSqsMessage command
+// receiveSqsMessageCmd represents the receive-sqs-message command
 var receiveSqsMessageCmd = &cobra.Command{
 	Use:   "receive-sqs-message",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Receive a message from an AWS SQS queue",
+	Long: `This command can be used to receive a message from an SQS queue
+in your AWS account. Snowflake data ingestion errors are sent to an SQS queue,
+whose ARN is displayed when running the "onboard" command. While ingestion
+errors are not expected when using the Antrea Flow Aggregator to export flows,
+this command can prove useful if flow records don't get ingested into your
+Snowflake account as expected.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+To receive a message without deleting it (message will remain in the queue and
+become available to consummers again after a short time interval):
+"theia-sf receive-sqs-message --queue-arn <ARN>"
+
+To receive a message and delete it from the queue:
+"theia-sf receive-sqs-message --queue-arn <ARN> --delete"
+
+Note that this command will not block: if no message is available in the queue,
+it will return immediately.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		region, _ := cmd.Flags().GetString("region")
@@ -93,8 +103,8 @@ func receiveSQSMessage(ctx context.Context, sqsClient sqsclient.Interface, queue
 func init() {
 	rootCmd.AddCommand(receiveSqsMessageCmd)
 
-	receiveSqsMessageCmd.Flags().String("region", defaultRegion, "Region of the SQS queue")
+	receiveSqsMessageCmd.Flags().String("region", GetEnv("AWS_REGION", defaultRegion), "region of the SQS queue")
 	receiveSqsMessageCmd.Flags().String("queue-arn", "", "ARN of the SQS queue")
 	receiveSqsMessageCmd.MarkFlagRequired("queue-arn")
-	receiveSqsMessageCmd.Flags().Bool("delete", false, "Delete received message from SQS queue")
+	receiveSqsMessageCmd.Flags().Bool("delete", false, "delete received message from SQS queue")
 }

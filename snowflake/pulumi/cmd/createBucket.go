@@ -18,16 +18,22 @@ import (
 	s3client "antrea.io/theia/snowflake/pulumi/pkg/aws/client/s3"
 )
 
-// createBucketCmd represents the createBucket command
+// createBucketCmd represents the create-bucket command
 var createBucketCmd = &cobra.Command{
 	Use:   "create-bucket",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Create an AWS S3 bucket",
+	Long: `This command creates a new S3 bucket in your AWS account. This is
+useful if you don't already have a bucket available to store infrastructure
+state (such a bucket is required for the "onboard" command).
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Before calling this command, ensure that AWS credentials are available:
+https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/#specifying-credentials
+
+To create a bucket with a specific name:
+"theia-sf create-bucket --name this-is-the-name-i-want"
+
+To create a bucket with a random name in a specific non-default region:
+"theia-sf create-bucket --region us-east-2"`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		region, _ := cmd.Flags().GetString("region")
@@ -80,8 +86,8 @@ func createBucket(ctx context.Context, s3Client s3client.Interface, name string,
 func init() {
 	rootCmd.AddCommand(createBucketCmd)
 
-	createBucketCmd.Flags().String("region", defaultRegion, "Region where bucket should be created")
-	createBucketCmd.Flags().String("name", "", "Name of bucket to create")
-	createBucketCmd.Flags().String("prefix", "antrea", "Prefix to use for bucket name (with auto-generated suffix)")
+	createBucketCmd.Flags().String("region", GetEnv("AWS_REGION", defaultRegion), "region where bucket should be created")
+	createBucketCmd.Flags().String("name", "", "name of bucket to create")
+	createBucketCmd.Flags().String("prefix", "antrea", "prefix to use for bucket name (with auto-generated suffix)")
 	createBucketCmd.MarkFlagsMutuallyExclusive("name", "prefix")
 }

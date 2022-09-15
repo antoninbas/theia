@@ -16,16 +16,14 @@ import (
 	s3client "antrea.io/theia/snowflake/pulumi/pkg/aws/client/s3"
 )
 
-// deleteBucketCmd represents the deleteBucket command
+// deleteBucketCmd represents the delete-bucket command
 var deleteBucketCmd = &cobra.Command{
 	Use:   "delete-bucket",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Delete an AWS S3 bucket",
+	Long: `This command deletes an existing S3 bucket in your AWS
+account. For example:
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+"theia-sf delete-bucket --name <YOUR BUCKET NAME>"`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		region, _ := cmd.Flags().GetString("region")
@@ -106,8 +104,8 @@ func deleteS3Objects(ctx context.Context, s3Client s3client.Interface, bucketNam
 func init() {
 	rootCmd.AddCommand(deleteBucketCmd)
 
-	deleteBucketCmd.Flags().String("region", defaultRegion, "Region to use for deleting the bucket")
-	deleteBucketCmd.Flags().String("name", "", "Name of bucket to delete")
+	deleteBucketCmd.Flags().String("region", GetEnv("AWS_REGION", defaultRegion), "region to use for deleting the bucket")
+	deleteBucketCmd.Flags().String("name", "", "name of bucket to delete")
 	deleteBucketCmd.MarkFlagRequired("name")
-	deleteBucketCmd.Flags().Bool("force", false, "Delete all objects if bucket is not empty")
+	deleteBucketCmd.Flags().Bool("force", false, "delete all objects if bucket is not empty")
 }
