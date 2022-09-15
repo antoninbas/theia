@@ -23,7 +23,10 @@ var deleteBucketCmd = &cobra.Command{
 	Long: `This command deletes an existing S3 bucket in your AWS
 account. For example:
 
-"theia-sf delete-bucket --name <YOUR BUCKET NAME>"`,
+"theia-sf delete-bucket --name <YOUR BUCKET NAME>"
+
+If the bucket is not empty, you will need to provide the "--force" flag, which
+will cause all objects in the bucket to be deleted.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		region, _ := cmd.Flags().GetString("region")

@@ -46,5 +46,6 @@ CREATE TABLE flows (
   throughputFromDestinationNode NUMBER(20, 0),
   reverseThroughputFromSourceNode NUMBER(20, 0),
   reverseThroughputFromDestinationNode NUMBER(20, 0),
+  clusterUUID STRING(36),
   timeInserted TIMESTAMP_TZ DEFAULT current_timestamp()
 ) IF NOT EXISTS
