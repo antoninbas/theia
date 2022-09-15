@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/spf13/cobra"
 
-	sqsclient "antrea.io/theia/snowflake/pulumi/pkg/aws/client/sqs"
+	sqsclient "antrea.io/theia/snowflake/pkg/aws/client/sqs"
 )
 
 // receiveSqsMessageCmd represents the receive-sqs-message command

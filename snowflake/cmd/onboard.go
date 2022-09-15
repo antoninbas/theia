@@ -12,7 +12,7 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 
-	"antrea.io/theia/snowflake/pulumi/pkg/infra"
+	"antrea.io/theia/snowflake/pkg/infra"
 )
 
 // onboardCmd represents the onboard command

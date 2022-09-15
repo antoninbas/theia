@@ -8,7 +8,7 @@ import (
 	"github.com/dustinkirkland/golang-petname"
 	"github.com/go-logr/logr"
 
-	sf "antrea.io/theia/snowflake/pulumi/pkg/snowflake"
+	sf "antrea.io/theia/snowflake/pkg/snowflake"
 )
 
 type temporaryWarehouse struct {

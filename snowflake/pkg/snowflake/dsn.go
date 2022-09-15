@@ -38,12 +38,12 @@ func GetDSN(options ...func(*sf.Config)) (string, *sf.Config, error) {
 		return ""
 	}
 
-	account := env("SNOWFLAKE_TEST_ACCOUNT", true)
-	user := env("SNOWFLAKE_TEST_USER", true)
-	password := env("SNOWFLAKE_TEST_PASSWORD", true)
-	host := env("SNOWFLAKE_TEST_HOST", false)
-	portStr := env("SNOWFLAKE_TEST_PORT", false)
-	protocol := env("SNOWFLAKE_TEST_PROTOCOL", false)
+	account := env("SNOWFLAKE_ACCOUNT", true)
+	user := env("SNOWFLAKE_USER", true)
+	password := env("SNOWFLAKE_PASSWORD", true)
+	host := env("SNOWFLAKE_HOST", false)
+	portStr := env("SNOWFLAKE_PORT", false)
+	protocol := env("SNOWFLAKE_PROTOCOL", false)
 
 	port := 443 // snowflake default port
 	var err error

@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"antrea.io/theia/snowflake/pulumi/pkg/infra"
+	"antrea.io/theia/snowflake/pkg/infra"
 )
 
 // offboardCmd represents the offboard command

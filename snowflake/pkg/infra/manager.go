@@ -21,8 +21,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"antrea.io/theia/snowflake/pulumi/database"
-	sf "antrea.io/theia/snowflake/pulumi/pkg/snowflake"
+	"antrea.io/theia/snowflake/database"
+	sf "antrea.io/theia/snowflake/pkg/snowflake"
 )
 
 type pulumiPlugin struct {

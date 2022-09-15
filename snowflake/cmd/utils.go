@@ -7,7 +7,7 @@ import (
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 
-	s3client "antrea.io/theia/snowflake/pulumi/pkg/aws/client/s3"
+	s3client "antrea.io/theia/snowflake/pkg/aws/client/s3"
 )
 
 func GetEnv(key string, defaultValue string) string {

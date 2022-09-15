@@ -13,7 +13,7 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/spf13/cobra"
 
-	s3client "antrea.io/theia/snowflake/pulumi/pkg/aws/client/s3"
+	s3client "antrea.io/theia/snowflake/pkg/aws/client/s3"
 )
 
 // deleteBucketCmd represents the delete-bucket command

@@ -15,7 +15,7 @@ import (
 	"github.com/dustinkirkland/golang-petname"
 	"github.com/spf13/cobra"
 
-	s3client "antrea.io/theia/snowflake/pulumi/pkg/aws/client/s3"
+	s3client "antrea.io/theia/snowflake/pkg/aws/client/s3"
 )
 
 // createBucketCmd represents the create-bucket command
