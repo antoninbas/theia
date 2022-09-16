@@ -313,7 +313,8 @@ func declareStack(warehouseName string) func(ctx *pulumi.Context) error {
 		// when disabling auto-naming, it's safer to use DeleteBeforeReplace
 		// see https://www.pulumi.com/docs/intro/concepts/resources/names/#autonaming
 		bucket, err := s3.NewBucketV2(ctx, "antrea-flows-bucket", &s3.BucketV2Args{
-			Bucket: pulumi.Sprintf("%s%s", s3BucketNamePrefix, randomString.ID()),
+			Bucket:       pulumi.Sprintf("%s%s", s3BucketNamePrefix, randomString.ID()),
+			ForceDestroy: pulumi.Bool(true), // bucket will be deleted even if not empty
 		}, pulumi.DeleteBeforeReplace(true))
 		if err != nil {
 			return err
